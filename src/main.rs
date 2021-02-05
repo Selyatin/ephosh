@@ -6,8 +6,13 @@ use tui::widgets::{Block, Borders, Paragraph, List, ListItem};
 use tui::text::{Span, Spans};
 use tui::layout::{Layout, Constraint, Direction};
 use termion::event::Key;
-use std::sync::mpsc;
-use std::env;
+use std::{
+    env,
+    sync::mpsc,
+    thread,
+    process::Command,
+    path::Path
+};
 mod event;
 fn main() -> Result<(), io::Error> {
     let (tx, rx) = mpsc::channel();
@@ -58,32 +63,59 @@ fn main() -> Result<(), io::Error> {
             if let event::Event::Input(input) = events.next().unwrap() {
                 match input {
                     Key::Char('\n') => {
-                        let args = it.split_whitespace().collect::<Vec<&str>>();
-                        let mut cmd = String::from("");
-                        if !args.is_empty() {
-                            let path = env::var("PATH").unwrap();
-                            let paths = path.split(":").collect::<Vec<&str>>();
-                            for path in paths {
-                                let mut a = path.to_owned();
-                                a.push('/');
-                                a.push_str(args[0]);
-                                if std::path::Path::new(&a[..]).exists() {
-                                    cmd = a;
-                                }
-                            }
-                            let mut op = std::process::Command::new(&cmd);
-                            if !cmd.is_empty() {
-                                for i in args[1..].iter() {
-                                    op.arg(i);
-                                }
-                                let tx1 = mpsc::Sender::clone(&tx);
-                                std::thread::spawn(move || {
-                                    tx1.send(op.output().unwrap().stdout).unwrap();
-                                });
-                                cmds.push(format!("{}: {}", args[0], std::str::from_utf8(&(rx.recv().unwrap()[..]))
-                                    .unwrap()));
+
+                        let args: Vec<&str> = it.split_whitespace().collect();
+                        let mut cmd = "".to_owned();
+                        
+                        if args.is_empty(){
+                            return;
+                        }
+                        
+                        let path_var_result = env::var("PATH");
+                        
+                        if let Err(_) = path_var_result {
+                            return;
+                        }
+
+                        let path_var = path_var_result.unwrap();
+
+                        let mut paths_vec: Vec<String> = path_var.split(":")
+                            .collect::<Vec<&str>>()
+                            .into_iter()
+                            .map(|s| s.to_owned()).collect();
+
+                        for path in paths_vec.iter_mut() {
+                            path.push_str("/");
+                            path.push_str(args[0]);
+
+                            if Path::new(&path).exists() {
+                                cmd = path.to_string();
                             }
                         }
+    
+                        let mut command = Command::new(&cmd);
+
+                        for arg in args[1..].iter() {
+                            command.arg(arg);
+                        }
+                        
+                        let output_result = command.output();
+
+                        if let Err(_) = output_result {
+                            return;
+                        }
+
+                        let stdout = output_result.unwrap().stdout;
+
+                        if let Err(_) = tx.send(stdout){
+                            return;
+                        }
+
+                        if let Ok(data) = rx.try_recv(){
+                            let data_string = String::from_utf8_lossy(&data);
+                            cmds.push(format!("{}: {}", args[0], data_string));
+                        }
+                        
                         it.clear();
                     }
                     Key::Char('q') => std::process::exit(0),
