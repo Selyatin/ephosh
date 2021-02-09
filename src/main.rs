@@ -52,14 +52,19 @@ fn main() -> Result<(), io::Error> {
             
             f.set_cursor(chunks[1].x + 1 + it.len() as u16, chunks[1].y+1);
             
-            let messages: Vec<ListItem> = output_pane
-                .iter()
-                .map(|o|{
-                    let content = vec![Spans::from(Span::raw(format!("{}", o)))];
-                    ListItem::new(content)
-                })
-                .collect();
-                
+            let mut messages: Vec<ListItem> = vec![];
+
+            for output in &output_pane {
+                let newlines: Vec<&str> = output.split("\n").collect();
+
+                for line in newlines {
+                    let span = Spans::from(Span::raw(line.to_owned()));
+                    let content = ListItem::new(span);
+
+                    messages.push(content);
+                }
+            }
+            
             let messages = List::new(messages)
                 .block(Block::default()
                 .borders(Borders::ALL).title("Output"));
