@@ -2,7 +2,7 @@ use std::io;
 use termion::raw::IntoRawMode;
 use tui::Terminal;
 use tui::backend::TermionBackend;
-use tui::widgets::{Block, Borders, Paragraph, List, ListItem};
+use tui::widgets::{Block, Borders, Paragraph, List, ListItem, Table, Row};
 use tui::text::{Span, Spans};
 use tui::layout::{Layout, Constraint, Direction};
 use termion::event::Key;
@@ -41,36 +41,70 @@ fn main() -> Result<(), io::Error> {
                 .split(f.size());
                 
             let block = Block::default()
-                .title("Output 1")
-                .borders(Borders::ALL);
-            f.render_widget(block, chunks[0]);
-                
-            let block = Block::default()
                 .title("Input")
                 .borders(Borders::ALL);
             f.render_widget(block, chunks[1]);
             
             f.set_cursor(chunks[1].x + 1 + it.len() as u16, chunks[1].y+1);
             
-            let mut messages: Vec<ListItem> = vec![];
 
+            let mut output_newlines: Vec<Vec<&str>> = vec![];
+            
             for output in &output_pane {
                 let newlines: Vec<&str> = output.split("\n").collect();
-
-                for line in newlines {
-                    let span = Spans::from(Span::raw(line.to_owned()));
-                    let content = ListItem::new(span);
-
-                    messages.push(content);
-                }
+                output_newlines.push(newlines);
             }
             
-            let messages = List::new(messages)
-                .block(Block::default()
-                .borders(Borders::ALL).title("Output"));
+            let mut rows: Vec<Row> = vec![];
+            
+            output_newlines.sort_by(|a, b| {
+                b.len().cmp(&a.len())
+            });
+            
+            let mut i = 0;
+
+            let length = output_newlines.get(0).unwrap_or(&Vec::new()).len();
+
+            while i < length {
+                let mut row_lines: Vec<&str> = vec![];
                 
-            f.render_widget(messages, chunks[0]);
+                for lines in &output_newlines {
+                    
+                    match lines.get(i) {
+                        Some(line) => row_lines.push(line),
+                        None => {}
+                    };
+                }
                 
+                let row = Row::new(row_lines);
+
+                rows.push(row);
+
+                i += 1;
+            }
+
+            let mut widths: Vec<Constraint> = vec![];
+            
+            let output_pane_len = match output_pane.len() {
+                0 => 1,
+                _ => output_pane.len()
+            };
+            let percentage = (100 / output_pane_len) as u16;
+            for _ in 0..output_pane_len - 1 {
+                let constraint = Constraint::Percentage(percentage);
+                widths.push(constraint);
+            }
+
+            let table = Table::new(rows).block(Block::default().title("Table").borders(Borders::ALL))
+                .widths(&widths);
+            f.render_widget(table, chunks[0]);
+            
+            drop(widths);
+            drop(percentage);
+            drop(output_pane_len);
+            drop(length);
+            drop(output_newlines);
+            
             let inp = Paragraph::new(it.as_ref())
                 .block(Block::default()
                 .borders(Borders::ALL).title("Input"));
