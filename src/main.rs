@@ -1,16 +1,22 @@
 use std::io;
-use termion::raw::IntoRawMode;
-use tui::Terminal;
-use tui::backend::TermionBackend;
-use tui::widgets::{Block, Borders, Paragraph, List, ListItem};
-use tui::text::{Span, Spans};
-use tui::layout::{Layout, Constraint, Direction};
-use termion::event::Key;
+use termion::{
+    raw::IntoRawMode,
+    event::Key,
+};
+use tui::{
+    Terminal,
+    backend::TermionBackend,
+    widgets::{Block, Borders, Paragraph, List, ListItem},
+    text::{Span, Spans},
+    layout::{Layout, Constraint, Direction},
+};
 use std::{
     env,
     sync::mpsc::{Receiver, TryRecvError},
-    path::Path
+    path::Path,
+    cmp::Ordering,
 };
+use config::Config;
 
 mod event;
 mod non_blocking;
@@ -25,7 +31,7 @@ fn main() -> Result<(), io::Error> {
 
     let mut it = String::from("");
 
-    const MAX_OUTPUTS: usize = config::max_outputs();
+    let config = Config::new();
 
     let mut output_to_overwrite_index: usize = 0;
 
@@ -56,7 +62,7 @@ fn main() -> Result<(), io::Error> {
 
             for output in &output_pane {
                 let newlines: Vec<&str> = output.split("\n").collect();
-                    output_newlines.push(newlines);
+                output_newlines.push(newlines);
             }
 
             let mut lists_vec: Vec<List> = vec![];
@@ -83,7 +89,6 @@ fn main() -> Result<(), io::Error> {
 
             let output_layout = Layout::default()
                 .direction(Direction::Horizontal)
-                .margin(0)
                 .constraints(constraints)
                 .split(chunks[0]);
 
@@ -114,8 +119,10 @@ fn main() -> Result<(), io::Error> {
                         if args.len() < 2 {
                             output_pane.clear();
                         } else {
-                            let index = args[1].parse::<usize>().unwrap();
-                            output_pane[if index == 0 || index == 1 { 0 } else { index - 1 }].clear();
+                            let index = args[1].parse::<usize>();
+                            if let Ok(index) = index {
+                                output_pane[if index <= 1 { 0 } else { index - 1 }].clear();
+                            }
                         }
                         it.clear();
                         continue;
@@ -128,7 +135,7 @@ fn main() -> Result<(), io::Error> {
                     let path_var_result = env::var("PATH");
 
                     if let Err(err) = path_var_result {
-                        if output_pane.len() < MAX_OUTPUTS {
+                        if output_pane.len() < config.max_outputs {
                             output_pane.push(err.to_string());
                             it.clear();
                         }
@@ -154,7 +161,7 @@ fn main() -> Result<(), io::Error> {
                     let command_result = non_blocking::Command::new(&cmd).args(&args[1..]).spawn();
 
                     if let Err(err) = command_result {
-                        if output_pane.len() < MAX_OUTPUTS { 
+                        if output_pane.len() < config.max_outputs { 
                             output_pane.push(err.to_string());
                             it.clear();
                         }
@@ -186,21 +193,27 @@ fn main() -> Result<(), io::Error> {
             match receiver.try_recv() {
                 Ok(message) => {
                     if message != "" {
-                        if output_pane.len() < MAX_OUTPUTS { 
-                            output_pane.push(message)
-                        } else {
-                            let check = output_to_overwrite_index < MAX_OUTPUTS - 1;
-                            if check {
-                                output_pane[output_to_overwrite_index] = message;
-                                output_to_overwrite_index += 1;
-                            } else {
-                                output_pane[MAX_OUTPUTS - 1] = message;
-                                output_to_overwrite_index = 0;
+                        match output_pane.len().cmp(&config.max_outputs) {
+                            
+                            Ordering::Less => {
+                                output_pane.push(message)
                             }
+                            
+                            Ordering::Equal => {
+                                if output_to_overwrite_index < config.max_outputs - 1 {
+                                    output_pane[output_to_overwrite_index] = message;
+                                    output_to_overwrite_index += 1;
+                                } else {
+                                    output_pane[config.max_outputs - 1] = message;
+                                    output_to_overwrite_index = 0;
+                                }
+                            }
+                            
+                            _ => {}
                         }
                     }
                 },
-
+                
                 Err(err) => {
                     if err == TryRecvError::Disconnected {
                         output_receivers.remove(i);
