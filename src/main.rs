@@ -2,18 +2,19 @@ use std::io;
 use termion::raw::IntoRawMode;
 use tui::Terminal;
 use tui::backend::TermionBackend;
-use tui::widgets::{Block, Borders, Paragraph, List, ListItem, Table, Row};
+use tui::widgets::{Block, Borders, Paragraph, List, ListItem};
 use tui::text::{Span, Spans};
 use tui::layout::{Layout, Constraint, Direction};
 use termion::event::Key;
 use std::{
     env,
-    sync::mpsc::{self, Sender, Receiver, TryRecvError},
+    sync::mpsc::{Receiver, TryRecvError},
     path::Path
 };
 
 mod event;
 mod non_blocking;
+mod config;
 
 fn main() -> Result<(), io::Error> {
     let mut output_pane: Vec<String> = vec![];
@@ -24,6 +25,10 @@ fn main() -> Result<(), io::Error> {
 
     let mut it = String::from("");
 
+    const MAX_OUTPUTS: usize = config::max_outputs();
+
+    let mut output_to_overwrite_index: usize = 0;
+
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -33,7 +38,7 @@ fn main() -> Result<(), io::Error> {
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .margin(1)
+                .margin(2)
                 .constraints([
                     Constraint::Percentage(94),
                     Constraint::Percentage(6),
@@ -47,22 +52,19 @@ fn main() -> Result<(), io::Error> {
 
             f.set_cursor(chunks[1].x + 1 + it.len() as u16, chunks[1].y+1);
 
-
             let mut output_newlines: Vec<Vec<&str>> = vec![];
 
             for output in &output_pane {
                 let newlines: Vec<&str> = output.split("\n").collect();
-                output_newlines.push(newlines);
+                    output_newlines.push(newlines);
             }
 
             let mut lists_vec: Vec<List> = vec![];
             
             for newlines in output_newlines {
                 let list_items: Vec<ListItem> = newlines.iter().map(|element| ListItem::new(Spans::from(Span::raw(element.to_owned())))).collect();
-                
-                let list = List::new(list_items).block(Block::default().borders(Borders::ALL));
-                
-                lists_vec.push(list);
+                    let list = List::new(list_items).block(Block::default().borders(Borders::ALL));
+                    lists_vec.push(list);
             }
 
             let output_pane_len = match lists_vec.len() {
@@ -81,7 +83,7 @@ fn main() -> Result<(), io::Error> {
 
             let output_layout = Layout::default()
                 .direction(Direction::Horizontal)
-                .margin(1)
+                .margin(0)
                 .constraints(constraints)
                 .split(chunks[0]);
 
@@ -94,7 +96,8 @@ fn main() -> Result<(), io::Error> {
             let inp = Paragraph::new(it.as_ref())
                 .block(Block::default()
                     .borders(Borders::ALL).title("Input"));
-                    f.render_widget(inp, chunks[1]);
+
+            f.render_widget(inp, chunks[1]);
         }).unwrap();
 
         if let event::Event::Input(input) = events.next().unwrap() {
@@ -108,7 +111,12 @@ fn main() -> Result<(), io::Error> {
                     }
 
                     if args[0] == "clear" {
-                        output_pane.clear();
+                        if args.len() < 2 {
+                            output_pane.clear();
+                        } else {
+                            let index = args[1].parse::<usize>().unwrap();
+                            output_pane[if index == 0 || index == 1 { 0 } else { index - 1 }].clear();
+                        }
                         it.clear();
                         continue;
                     }
@@ -120,7 +128,10 @@ fn main() -> Result<(), io::Error> {
                     let path_var_result = env::var("PATH");
 
                     if let Err(err) = path_var_result {
-                        output_pane.push(err.to_string());
+                        if output_pane.len() < MAX_OUTPUTS {
+                            output_pane.push(err.to_string());
+                            it.clear();
+                        }
                         continue;
                     }
 
@@ -143,14 +154,16 @@ fn main() -> Result<(), io::Error> {
                     let command_result = non_blocking::Command::new(&cmd).args(&args[1..]).spawn();
 
                     if let Err(err) = command_result {
-                        output_pane.push(err.to_string());
+                        if output_pane.len() < MAX_OUTPUTS { 
+                            output_pane.push(err.to_string());
+                            it.clear();
+                        }
                         continue;
                     }
 
                     let (_sender, receiver) = command_result.unwrap();
 
                     output_receivers.push(receiver);
-
                     it.clear();
                 }
                 Key::Char('q') => {
@@ -172,8 +185,19 @@ fn main() -> Result<(), io::Error> {
 
             match receiver.try_recv() {
                 Ok(message) => {
-                    if message != ""{
-                        output_pane.push(message)
+                    if message != "" {
+                        if output_pane.len() < MAX_OUTPUTS { 
+                            output_pane.push(message)
+                        } else {
+                            let check = output_to_overwrite_index < MAX_OUTPUTS - 1;
+                            if check {
+                                output_pane[output_to_overwrite_index] = message;
+                                output_to_overwrite_index += 1;
+                            } else {
+                                output_pane[MAX_OUTPUTS - 1] = message;
+                                output_to_overwrite_index = 0;
+                            }
+                        }
                     }
                 },
 
