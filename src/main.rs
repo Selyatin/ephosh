@@ -17,12 +17,50 @@ use std::{
     cmp::Ordering,
 };
 use config::Config;
+use clap::{
+    App, 
+    Arg,
+    crate_version,
+    crate_authors,
+};
 
 mod event;
 mod non_blocking;
 mod config;
 
 fn main() -> Result<(), io::Error> {
+    let args = App::new("ephosh")
+        .version(crate_version!())
+        .author(crate_authors!())
+        .arg(
+            Arg::with_name("config")
+                .help("Path to configuration file")
+                .short("c") 
+                .long("config") 
+                .multiple(false)
+                .takes_value(true),
+        )
+        .get_matches();
+
+    let config: Config;
+
+    config = match args.occurrences_of("config") {
+        0 => {
+            let config_path = &format!("{}/.config/ephosh/ephosh.yml", std::env::var("HOME").unwrap())[..];
+            match Path::new(config_path).is_file() {
+                true => Config::new(config_path),
+                false => Config::default(),
+                
+            }
+        }
+        _ => {
+            match args.value_of("config") {
+                Some(value) => Config::new(value),
+                None => Config::default(),
+            }
+        }
+    };
+
     let mut output_pane: Vec<String> = vec![];
 
     let mut output_receivers: Vec<Receiver<String>> = vec![];
@@ -30,8 +68,6 @@ fn main() -> Result<(), io::Error> {
     std::process::Command::new("clear").spawn().unwrap();
 
     let mut it = String::from("");
-
-    let config = Config::new();
 
     let mut output_to_overwrite_index: usize = 0;
 
@@ -44,22 +80,22 @@ fn main() -> Result<(), io::Error> {
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .margin(2)
+                .margin(1)
                 .constraints([
                     Constraint::Percentage(94),
                     Constraint::Percentage(6),
                 ].as_ref())
                 .split(f.size());
-
+                
             let block = Block::default()
                 .title("Input")
                 .borders(Borders::ALL);
             f.render_widget(block, chunks[1]);
-
+            
             f.set_cursor(chunks[1].x + 1 + it.len() as u16, chunks[1].y+1);
-
+            
             let mut output_newlines: Vec<Vec<&str>> = vec![];
-
+            
             for output in &output_pane {
                 let newlines: Vec<&str> = output.split("\n").collect();
                 output_newlines.push(newlines);
@@ -115,21 +151,23 @@ fn main() -> Result<(), io::Error> {
                         continue;
                     }
 
-                    if args[0] == "clear" {
-                        if args.len() < 2 {
-                            output_pane.clear();
-                        } else {
-                            let index = args[1].parse::<usize>();
-                            if let Ok(index) = index {
-                                output_pane[if index <= 1 { 0 } else { index - 1 }].clear();
+                    match args[0] {
+                        "clear" => {
+                            if args.len() < 2 {
+                                output_pane.clear();
+                            } else {
+                                let index = args[1].parse::<usize>();
+                                if let Ok(index) = index {
+                                    output_pane[if index <= 1 { 0 } else { index - 1 }].clear();
+                                }
                             }
+                            it.clear();
+                            continue;
                         }
-                        it.clear();
-                        continue;
-                    }
 
-                    if args[0] == "exit" {
-                        break;
+                        "exit" => break,
+
+                        _ => {}
                     }
 
                     let path_var_result = env::var("PATH");
