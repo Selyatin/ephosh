@@ -26,6 +26,7 @@ use clap::{
 
 mod event;
 mod non_blocking;
+mod inbuilt;
 mod config;
 
 fn main() -> Result<(), io::Error> {
@@ -44,13 +45,14 @@ fn main() -> Result<(), io::Error> {
 
     let config: Config;
 
+    let mut current_error = String::new();
+
     config = match args.occurrences_of("config") {
         0 => {
             let config_path = &format!("{}/.config/ephosh/ephosh.yml", std::env::var("HOME").unwrap())[..];
             match Path::new(config_path).is_file() {
                 true => Config::new(config_path),
                 false => Config::default(),
-                
             }
         }
         _ => {
@@ -105,7 +107,7 @@ fn main() -> Result<(), io::Error> {
             
             for newlines in output_newlines {
                 let list_items: Vec<ListItem> = newlines.iter().map(|element| ListItem::new(Spans::from(Span::raw(element.to_owned())))).collect();
-                    let list = List::new(list_items).block(Block::default().borders(Borders::ALL));
+                    let list = List::new(list_items).block(Block::default().borders(Borders::ALL).title("Output"));
                     lists_vec.push(list);
             }
 
@@ -134,16 +136,23 @@ fn main() -> Result<(), io::Error> {
 
             drop(lists_vec);
 
-            let inp = Paragraph::new(it.as_ref())
+            let status_line = Paragraph::new(it.as_ref())
                 .block(Block::default()
-                    .borders(Borders::ALL).title("Input"));
+                    .borders(Borders::ALL).title(format!(" [ {} | {} {}]", 
+                                                         std::env::var("USER").unwrap(), 
+                                                         std::env::current_dir().unwrap().to_str().unwrap(),
+                                                         if !current_error.is_empty() {
+                                                            format!("| {} ", current_error)
+                                                         } else { String::from("") }
+                                                         )));
 
-            f.render_widget(inp, chunks[1]);
+            f.render_widget(status_line, chunks[1]);
         }).unwrap();
 
         if let event::Event::Input(input) = events.next().unwrap() {
             match input {
                 Key::Char('\n') => {
+                    current_error.clear();
                     let args: Vec<&str> = it.split_whitespace().collect();
                     let mut cmd = "".to_owned();
 
@@ -152,14 +161,27 @@ fn main() -> Result<(), io::Error> {
                     }
 
                     match args[0] {
+                        "cd" => {
+                            if args.len() > 1 {
+                                if let Err(err) = inbuilt::cd(args[1]) {
+                                    current_error = err.to_string();
+                                }
+                            };
+                            it.clear();
+                            continue;
+                        }
                         "clear" => {
                             if args.len() < 2 {
                                 output_pane.clear();
                             } else {
                                 let index = args[1].parse::<usize>();
-                                if let Ok(index) = index {
-                                    output_pane[if index <= 1 { 0 } else { index - 1 }].clear();
+                                if let Err(_) = index {
+                                    current_error = String::from("Incorrect arguments were provided");
+                                    it.clear();
+                                    continue;
                                 }
+                                let value = index.unwrap();
+                                output_pane[if value <= 1 { 0 } else { value - 1 }].clear();
                             }
                             it.clear();
                             continue;
