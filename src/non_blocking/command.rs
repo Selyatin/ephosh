@@ -2,8 +2,7 @@ use std::process::{self, Stdio};
 use std::convert::AsRef;
 use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::os::unix::io::AsRawFd;
-use std::io::{self, Read, Write, BufRead, BufReader};
+use std::io::{self, Read};
 
 #[derive(Debug, Clone)]
 pub struct Command {
