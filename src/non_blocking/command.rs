@@ -2,7 +2,8 @@ use std::process::{self, Stdio};
 use std::convert::AsRef;
 use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::io::{self, BufRead, BufReader};
+use std::os::unix::io::AsRawFd;
+use std::io::{self, Read, Write, BufRead, BufReader};
 
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -52,24 +53,20 @@ impl Command<> {
             let mut process = process_result.unwrap();
 
             let _stdin = process.stdin.take().unwrap();
-            let stdout = process.stdout.take().unwrap();
-            let stderr = process.stderr.take().unwrap();
+            let mut stdout = process.stdout.take().unwrap();
+            let mut stderr = process.stderr.take().unwrap();
 
-            let mut stdout_reader = BufReader::new(stdout);
-            let mut stderr_reader = BufReader::new(stderr);
-
-            let mut line = "".to_owned();
+            let mut buffer = [0 as u8; 10024];
 
             loop {
-                line.clear();
 
-                match stdout_reader.read_line(&mut line){
+                match stdout.read(&mut buffer){
                     Ok(size) => {
                         if size <= 0 {
                             break;
                         }
 
-                        if sender_output.send(line.clone()).is_err(){
+                        if sender_output.send(String::from_utf8_lossy(&buffer).to_string()).is_err(){
                             break;   
                         }
                     },
@@ -82,15 +79,14 @@ impl Command<> {
             }
 
             loop {
-                line.clear();
 
-                match stderr_reader.read_line(&mut line){
+                match stderr.read(&mut buffer){
                     Ok(size) => {
                         if size <= 0 {
                             break;
                         }
 
-                        if sender_output.send(line.clone()).is_err(){
+                        if sender_output.send(String::from_utf8_lossy(&buffer).to_string()).is_err(){
                             break;
                         }
                     },
