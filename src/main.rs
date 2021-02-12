@@ -6,15 +6,12 @@ use termion::{
 use tui::{
     Terminal,
     backend::TermionBackend,
-    widgets::{Block, Borders, Paragraph, List, ListItem},
-    text::{Span, Spans},
+    widgets::{Block, Borders, Paragraph},
     layout::{Layout, Constraint, Direction},
 };
 use std::{
     env,
-    sync::mpsc::{Receiver, TryRecvError},
     path::Path,
-    cmp::Ordering,
 };
 use config::Config;
 use clap::{
@@ -24,10 +21,13 @@ use clap::{
     crate_authors,
 };
 
+mod ui;
 mod event;
 mod non_blocking;
 mod inbuilt;
 mod config;
+
+use ui::Pane;
 
 fn main() -> Result<(), io::Error> {
     let args = App::new("ephosh")
@@ -35,11 +35,11 @@ fn main() -> Result<(), io::Error> {
         .author(crate_authors!())
         .arg(
             Arg::with_name("config")
-                .help("Path to configuration file")
-                .short("c") 
-                .long("config") 
-                .multiple(false)
-                .takes_value(true),
+            .help("Path to configuration file")
+            .short("c") 
+            .long("config") 
+            .multiple(false)
+            .takes_value(true),
         )
         .get_matches();
 
@@ -63,15 +63,11 @@ fn main() -> Result<(), io::Error> {
         }
     };
 
-    let mut output_pane: Vec<String> = vec![];
-
-    let mut output_receivers: Vec<Receiver<String>> = vec![];
+    let mut output_panes: Vec<Pane> = vec![];
 
     std::process::Command::new("clear").spawn().unwrap();
 
     let mut it = String::from("");
-
-    let mut output_to_overwrite_index: usize = 0;
 
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
@@ -88,39 +84,24 @@ fn main() -> Result<(), io::Error> {
                     Constraint::Percentage(6),
                 ].as_ref())
                 .split(f.size());
-                
+
             let block = Block::default()
                 .title("Input")
                 .borders(Borders::ALL);
             f.render_widget(block, chunks[1]);
-            
+
             f.set_cursor(chunks[1].x + 1 + it.len() as u16, chunks[1].y+1);
-            
-            let mut output_newlines: Vec<Vec<&str>> = vec![];
-            
-            for output in &output_pane {
-                let newlines: Vec<&str> = output.split("\n").collect();
-                output_newlines.push(newlines);
-            }
 
-            let mut lists_vec: Vec<List> = vec![];
-            
-            for newlines in output_newlines {
-                let list_items: Vec<ListItem> = newlines.iter().map(|element| ListItem::new(Spans::from(Span::raw(element.to_owned())))).collect();
-                    let list = List::new(list_items).block(Block::default().borders(Borders::ALL).title("Output"));
-                    lists_vec.push(list);
-            }
-
-            let output_pane_len = match lists_vec.len() {
+            let output_panes_len = match output_panes.len() {
                 0 => 1,
-                _ => lists_vec.len()
+                _ => output_panes.len()
             };
 
-            let percentage = (100 / output_pane_len) as u16;
+            let percentage = (100 / output_panes_len) as u16;
 
             let mut constraints: Vec<Constraint> = vec![];
 
-            for _ in &lists_vec {
+            for _ in &output_panes {
                 let constraint = Constraint::Percentage(percentage);
                 constraints.push(constraint);
             }
@@ -130,21 +111,19 @@ fn main() -> Result<(), io::Error> {
                 .constraints(constraints)
                 .split(chunks[0]);
 
-            for (i, list) in lists_vec.iter().enumerate() {
-                f.render_widget(list.clone(), output_layout[i]);
+            for (i, pane) in output_panes.iter().enumerate() {
+                f.render_widget(pane.get_output_as_paragraph(), output_layout[i]);
             }
-
-            drop(lists_vec);
 
             let status_line = Paragraph::new(it.as_ref())
                 .block(Block::default()
                     .borders(Borders::ALL).title(format!(" [ {} | {} {}]", 
-                                                         std::env::var("USER").unwrap(), 
-                                                         std::env::current_dir().unwrap().to_str().unwrap(),
-                                                         if !current_error.is_empty() {
-                                                            format!("| {} ", current_error)
-                                                         } else { String::from("") }
-                                                         )));
+                            std::env::var("USER").unwrap(), 
+                            std::env::current_dir().unwrap().to_str().unwrap(),
+                            if !current_error.is_empty() {
+                                format!("| {} ", current_error)
+                            } else { String::from("") }
+                    )));
 
             f.render_widget(status_line, chunks[1]);
         }).unwrap();
@@ -172,17 +151,25 @@ fn main() -> Result<(), io::Error> {
                         }
                         "clear" => {
                             if args.len() < 2 {
-                                output_pane.clear();
-                            } else {
-                                let index = args[1].parse::<usize>();
-                                if let Err(_) = index {
-                                    current_error = String::from("Incorrect arguments were provided");
+                                output_panes.clear();
+                                it.clear();
+                                continue;
+                            }
+                            
+                            let index = match args[1].parse::<usize>(){
+                                Ok(value) => value,
+
+                                Err(_) => {
+                                    current_error = "Incorrect arguments were provided".to_owned();
                                     it.clear();
                                     continue;
                                 }
-                                let value = index.unwrap();
-                                output_pane[if value <= 1 { 0 } else { value - 1 }].clear();
-                            }
+                            };
+
+                            let value = if index <= 1 {0} else {(index - 1) as usize};
+
+                            output_panes.remove(value);
+
                             it.clear();
                             continue;
                         }
@@ -194,9 +181,9 @@ fn main() -> Result<(), io::Error> {
 
                     let path_var_result = env::var("PATH");
 
-                    if let Err(err) = path_var_result {
-                        if output_pane.len() < config.max_outputs {
-                            output_pane.push(err.to_string());
+                    if let Err(_err) = path_var_result {
+                        if output_panes.len() < config.max_outputs {
+                            //output_panes.push(err.to_string());
                             it.clear();
                         }
                         continue;
@@ -220,17 +207,21 @@ fn main() -> Result<(), io::Error> {
 
                     let command_result = non_blocking::Command::new(&cmd).args(&args[1..]).spawn();
 
-                    if let Err(err) = command_result {
-                        if output_pane.len() < config.max_outputs { 
-                            output_pane.push(err.to_string());
+                    if let Err(_err) = command_result {
+                        if output_panes.len() < config.max_outputs { 
                             it.clear();
                         }
                         continue;
                     }
 
-                    let (_sender, receiver) = command_result.unwrap();
+                    let (sender, receiver) = command_result.unwrap();
 
-                    output_receivers.push(receiver);
+                    let pane = Pane::new(sender, receiver);
+
+                    if output_panes.len() >= config.max_outputs {
+                        output_panes.remove(0);
+                    }
+                    output_panes.push(pane);
                     it.clear();
                 }
                 Key::Char('q') => {
@@ -246,42 +237,8 @@ fn main() -> Result<(), io::Error> {
             }
         }
 
-        let mut i: usize = 0;
-        while i < output_receivers.len(){
-            let receiver = &output_receivers[i];
-
-            match receiver.try_recv() {
-                Ok(message) => {
-                    if message != "" {
-                        match output_pane.len().cmp(&config.max_outputs) {
-                            
-                            Ordering::Less => {
-                                output_pane.push(message)
-                            }
-                            
-                            Ordering::Equal => {
-                                if output_to_overwrite_index < config.max_outputs - 1 {
-                                    output_pane[output_to_overwrite_index] = message;
-                                    output_to_overwrite_index += 1;
-                                } else {
-                                    output_pane[config.max_outputs - 1] = message;
-                                    output_to_overwrite_index = 0;
-                                }
-                            }
-                            
-                            _ => {}
-                        }
-                    }
-                },
-                
-                Err(err) => {
-                    if err == TryRecvError::Disconnected {
-                        output_receivers.remove(i);
-                    }
-                }
-            };
-
-            i += 1;
+        for pane in output_panes.iter_mut() {
+            pane.recv();
         }
     }
     Ok(())

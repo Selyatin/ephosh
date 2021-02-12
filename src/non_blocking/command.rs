@@ -2,7 +2,7 @@ use std::process::{self, Stdio};
 use std::convert::AsRef;
 use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, BufReader};
 
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -27,7 +27,7 @@ impl Command<> {
 
     pub fn args<T: IntoIterator<Item = S>, S: AsRef<str>>(&mut self, collection: T) -> &mut Self{
         for arg in collection.into_iter(){
-            self.args.push(arg.as_ref().to_owned());
+            self.arg(arg);
         }
 
         self
@@ -46,51 +46,63 @@ impl Command<> {
         }
 
         let (sender_output, receiver_output) = channel::<String>();
-        let (sender_input, receiver_input) = channel::<String>();
+        let (sender_input, _receiver_input) = channel::<String>();
 
         thread::spawn(move || {
             let mut process = process_result.unwrap();
 
-            let mut stdin = process.stdin.take().unwrap();
-            let mut stdout = process.stdout.take().unwrap();
-            let mut stderr = process.stderr.take().unwrap();
+            let _stdin = process.stdin.take().unwrap();
+            let stdout = process.stdout.take().unwrap();
+            let stderr = process.stderr.take().unwrap();
+
+            let mut stdout_reader = BufReader::new(stdout);
+            let mut stderr_reader = BufReader::new(stderr);
+
+            let mut line = "".to_owned();
 
             loop {
+                line.clear();
 
-                // Check if process has exited without blocking the thread.
-                if let Ok(Some(_)) = process.try_wait() {
-                    break;
-                }
+                match stdout_reader.read_line(&mut line){
+                    Ok(size) => {
+                        if size <= 0 {
+                            break;
+                        }
 
-                
-                let mut output = String::new();
+                        if sender_output.send(line.clone()).is_err(){
+                            break;   
+                        }
+                    },
 
-                if let Ok(input) = receiver_input.try_recv() {
-                    if let Err(err) = stdin.write_all(input.as_bytes()){
-                        sender_output.send(err.to_string()).unwrap();
-                        continue;
+                    Err(_) => {
+                        break;
                     }
-                }
+                };
 
-                
-                if let Err(err) = stdout.read_to_string(&mut output){
-                    sender_output.send(err.to_string()).unwrap();
-                    continue;
-                }
+            }
 
-                if let Err(err) = stderr.read_to_string(&mut output){
-                    sender_output.send(err.to_string()).unwrap();
-                    continue;
-                }
+            loop {
+                line.clear();
 
-                if let Err(_) = sender_output.send(output){
-                    break;
-                }
+                match stderr_reader.read_line(&mut line){
+                    Ok(size) => {
+                        if size <= 0 {
+                            break;
+                        }
 
+                        if sender_output.send(line.clone()).is_err(){
+                            break;
+                        }
+                    },
 
+                    Err(_) => {
+                        break;
+                    }
+                };
 
             }
         });
+
         Ok((sender_input, receiver_output))
     }
 }
