@@ -96,8 +96,10 @@ impl Command<> {
                 };
 
             }
+            
+            drop(buffer);
         });
-
+        
         Ok((sender_input, receiver_output))
     }
 }

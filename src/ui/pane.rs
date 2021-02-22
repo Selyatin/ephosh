@@ -28,6 +28,8 @@ impl Pane {
         let mut spans_lines: Vec<Spans> = vec![];
 
         for line in new_lines {
+            
+
             let spans = Spans::from(line);
 
             spans_lines.push(spans);

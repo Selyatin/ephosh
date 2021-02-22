@@ -11,7 +11,7 @@ use tui::{
 };
 use std::{
     env,
-    path::Path,
+    path::Path
 };
 use config::Config;
 use clap::{
@@ -22,6 +22,7 @@ use clap::{
 };
 
 mod ui;
+mod utils;
 mod event;
 mod non_blocking;
 mod inbuilt;
@@ -62,7 +63,9 @@ fn main() -> Result<(), io::Error> {
             }
         }
     };
-
+    
+    let mut commands = utils::get_commands_from_path().unwrap();
+    
     let mut output_panes: Vec<Pane> = vec![];
 
     std::process::Command::new("clear").spawn().unwrap();
@@ -133,7 +136,6 @@ fn main() -> Result<(), io::Error> {
                 Key::Char('\n') => {
                     current_error.clear();
                     let args: Vec<&str> = it.split_whitespace().collect();
-                    let mut cmd = "".to_owned();
 
                     if args.is_empty(){
                         continue;
@@ -173,6 +175,12 @@ fn main() -> Result<(), io::Error> {
                             it.clear();
                             continue;
                         }
+                        
+                        "reload" => {
+                            commands = utils::get_commands_from_path().unwrap();
+                            it.clear();
+                            continue;
+                        },
 
                         "exit" => break,
 
@@ -189,21 +197,13 @@ fn main() -> Result<(), io::Error> {
                         continue;
                     }
 
-                    let path_var = path_var_result.unwrap();
-
-                    let mut paths_vec: Vec<String> = path_var.split(":")
-                        .collect::<Vec<&str>>()
-                        .into_iter()
-                        .map(|s| s.to_owned()).collect();
-
-                    for path in paths_vec.iter_mut() {
-                        path.push_str("/");
-                        path.push_str(args[0]);
-
-                        if Path::new(&path).exists() {
-                            cmd = path.to_string();
+                    let cmd = match commands.get(args[0]){
+                        Some(cmd) => cmd,
+                        None => {
+                            it.clear();
+                            continue;
                         }
-                    }
+                    };
 
                     let command_result = non_blocking::Command::new(&cmd).args(&args[1..]).spawn();
 
