@@ -11,7 +11,7 @@ use tui::{
     layout::{Layout, Constraint, Direction},
 };
 use std::{
-    io::{self, Write, Read},
+    io::{self, Write},
     env,
     path::Path,
     collections::HashMap,
@@ -93,7 +93,7 @@ fn main() -> Result<(), io::Error> {
     let events = event::Events::new();
 
     // Clear the screen
-    std::process::Command::new("clear").spawn().unwrap();
+    print!("{}", termion::clear::All);
 
     let mut history_index: usize = 0;
 
