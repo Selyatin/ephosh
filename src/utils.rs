@@ -2,8 +2,7 @@ use std::{
     io,
     convert::AsRef,
     collections::HashMap,
-    path::Path,
-    os::unix::fs::PermissionsExt,
+    path::Path
 };
 
 pub fn recursive_dir_read<P: AsRef<Path>>(path: P) -> Result<Vec<String>, String>{
@@ -17,6 +16,7 @@ pub fn recursive_dir_read<P: AsRef<Path>>(path: P) -> Result<Vec<String>, String
             Mutex
         }
     };
+    use is_executable::IsExecutable;
 
     let mut threads_vec: Vec<thread::JoinHandle<_>> = vec![];
 
@@ -55,16 +55,8 @@ pub fn recursive_dir_read<P: AsRef<Path>>(path: P) -> Result<Vec<String>, String
 
             continue;
         }
-        let metadata = entry.metadata();
 
-        if let Err(err) = metadata {
-            return Err(err.to_string());
-        }
-
-        let metadata = metadata.unwrap();
-        let permissions = metadata.permissions().mode();
-
-        if metadata.is_file() && permissions & 0o111 != 0 {
+        if path.is_executable(){
             let path_str = path.to_str().unwrap();
             
             let mut vec = match paths_arc.lock(){
@@ -88,7 +80,9 @@ pub fn recursive_dir_read<P: AsRef<Path>>(path: P) -> Result<Vec<String>, String
 }
 
 pub fn get_commands_from_path() -> io::Result<HashMap<String, String>> {
-    use std::env;
+    use std::{
+        env,
+    };
 
     let path_var = env::var("PATH").unwrap();
 
