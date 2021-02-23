@@ -1,11 +1,13 @@
 use yaml_rust::YamlLoader;
+use std::convert::AsRef;
+
 pub struct Config {
     pub max_outputs: usize,
 }
 
 impl Config {
-    pub fn new(path: &str) -> Config {
-        let yaml_data_as_str = std::fs::read_to_string(path);
+    pub fn new<S: AsRef<str>>(path: S) -> Config {
+        let yaml_data_as_str = std::fs::read_to_string(path.as_ref());
 
         if let Err(_) = yaml_data_as_str {
             return Config::default();

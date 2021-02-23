@@ -13,8 +13,8 @@ impl Pane {
     pub fn new(sender: Sender<String>, receiver: Receiver<String>) -> Self{
         Self {
             output: String::new(),
-            receiver,
-            sender
+            receiver: receiver,
+            sender: sender
         }
     }
 
