@@ -3,6 +3,7 @@ use std::convert::AsRef;
 
 pub struct Config {
     pub max_outputs: usize,
+    pub history_path: String,
 }
 
 impl Config {
@@ -21,18 +22,27 @@ impl Config {
         
         let yaml_data = &yaml_data.unwrap()[0];
 
+        let history_path = yaml_data["shell"]["history_path"].clone().into_string();
+
+        let history_path = match history_path {
+            Some(path) => path,
+            None => format!("{}/.ephosh_history", std::env::var("HOME").unwrap()),
+        };
+
         Config {
-            max_outputs: yaml_data["output"]["max_outputs"]
+            max_outputs: yaml_data["shell"]["max_outputs"]
                 .clone()
                 .into_i64()
                 .unwrap() as usize,
+            history_path,
         }
     }
 }
 impl Default for Config {
     fn default() -> Config {
         Config {
-            max_outputs: 4
+            max_outputs: 4,
+            history_path: format!("{}/.ephosh_history", std::env::var("HOME").unwrap()),
         }
     }
 }

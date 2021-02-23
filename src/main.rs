@@ -11,10 +11,11 @@ use tui::{
     layout::{Layout, Constraint, Direction},
 };
 use std::{
-    io,
+    io::{self, Write, Read},
     env,
     path::Path,
-    collections::HashMap
+    collections::HashMap,
+    fs::{File, OpenOptions},
 };
 use config::Config;
 
@@ -34,7 +35,8 @@ struct Shell {
     pub panes: Vec<Pane>,
     pub error: String,
     pub input: String,
-    pub config: Config
+    pub config: Config,
+    pub history: File
 }
 
 impl Default for Shell {
@@ -58,6 +60,16 @@ impl Default for Shell {
 
         let username = std::env::var("USER").unwrap().to_owned();
 
+        let history = OpenOptions::new()
+            .append(true)
+            .read(true)
+            .open(&config.history_path);
+
+        let history = if let Err(_) = history {
+            File::create(&config.history_path).unwrap()
+        } else {
+            history.unwrap()
+        };
         Self {
             username,
             current_dir,
@@ -65,7 +77,8 @@ impl Default for Shell {
             config,
             error: "".to_owned(),
             input: "".to_owned(),
-            panes: vec![]        
+            panes: vec![],
+            history,
         }
     }
 }
@@ -81,6 +94,8 @@ fn main() -> Result<(), io::Error> {
 
     // Clear the screen
     std::process::Command::new("clear").spawn().unwrap();
+
+    let mut history_index: usize = 0;
 
     loop {
         terminal.draw(|f| {
@@ -123,11 +138,12 @@ fn main() -> Result<(), io::Error> {
                 f.render_widget(pane.get_output_as_paragraph(), output_layout[i]);
             }
 
-            let username = Span::styled(format!("[ {} | ", &shell.username), Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
-            let current_dir = Span::styled(format!("{} | ", &shell.current_dir), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD));
-            let error = Span::styled(format!("{}", &shell.error), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+            let separator = Span::raw(" | ");
+            let username = Span::styled(&shell.username, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
+            let current_dir = Span::styled(&shell.current_dir, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD));
+            let error = Span::styled(&shell.error, Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
 
-            let status_info = Spans::from(vec![username, current_dir, error, Span::raw(" ]")]);
+            let status_info = Spans::from(vec![Span::raw("[ "), username, separator.to_owned(), current_dir, separator, error, Span::raw(" ]")]);
 
             let status_line = Paragraph::new(shell.input.as_ref())
                 .block(Block::default()
@@ -141,9 +157,12 @@ fn main() -> Result<(), io::Error> {
                 Key::Char('\n') => {
                     let args: Vec<&str> = shell.input.split_whitespace().collect();
 
-                    if args.is_empty(){
+                    if args.is_empty() {
                         continue;
                     }
+
+                    shell.history.write_all(format!("{}\n", shell.input).as_bytes()).unwrap();
+                    history_index = 0;
 
                     match args[0] {
                         "cd" => {
@@ -240,6 +259,37 @@ fn main() -> Result<(), io::Error> {
                 Key::Backspace => {
                     shell.input.pop();
                 },
+                Key::Up => {
+                    let contents = std::fs::read_to_string(&shell.config.history_path).unwrap();
+                    let mut history_vec: Vec<&str> = contents.split('\n').collect();
+                    history_vec.reverse();
+
+                    if history_vec.len() > history_index + 1 {
+                        shell.input = String::from(history_vec[history_index + 1]);
+                        history_index += 1;
+                    }
+                }
+                Key::Down => {
+                    match history_index.cmp(&0) {
+                        std::cmp::Ordering::Greater => {
+
+                            let contents = std::fs::read_to_string(&shell.config.history_path).unwrap();
+                            let mut history_vec: Vec<&str> = contents.split_whitespace().collect();
+                            history_vec.reverse();
+
+                            if history_index - 1 > 0 {
+                                history_index -= 1;
+                                shell.input = String::from(history_vec[history_index - 1]);
+                            } else {
+                                history_index = 0;
+                                shell.input = String::new();
+                            }
+                        }
+                        _ => {
+                            shell.input = String::new();
+                        }
+                    }
+                } 
                 _ => {}
             }
         }
