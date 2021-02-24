@@ -16,7 +16,6 @@ impl Config {
         }
 
         let json_data = serde_json::from_str(&json_data_as_str.unwrap()[..]);
-        std::fs::write("/home/bloatoo/tests", format!("{:#?}", json_data)).unwrap();
 
         if let Err(err) = json_data {
             return Err((Config::default(), err.to_string()));
