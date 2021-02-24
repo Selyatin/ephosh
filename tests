@@ -1,0 +1,2 @@
+serde_json = "1.0.59"
+serde = { features = ["derive"], version = "1.0.117" }
