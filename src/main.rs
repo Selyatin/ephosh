@@ -16,6 +16,7 @@ use std::{
     path::Path,
     collections::HashMap,
     fs::{File, OpenOptions},
+    cmp::Ordering,
 };
 use config::Config;
 
@@ -36,32 +37,40 @@ struct Shell {
     pub error: String,
     pub input: String,
     pub config: Config,
-    pub history: File
+    pub history: File,
 }
-
 impl Default for Shell {
     fn default() -> Self {
         let commands = match utils::get_commands_from_path(){
             Ok(commands) => commands,
             Err(err) => panic!("Error: {}", err)
         };
+
         let home_var = match env::var("HOME") {
             Ok(var) => var,
             Err(_) => panic!("Error: Couldn't get HOME var")
         };
-        let config_path = format!("{}/.config/ephosh/ephosh.yml", home_var);
+
+        let config_path = format!("{}/.config/ephosh/ephosh.json", home_var);
 
         let config = match Path::new(&config_path).is_file() {
-            true => Config::new(config_path),
+            true => {
+                let config = Config::new(config_path);
+                match config {
+                    Ok(config) => config,
+                    Err(err) => {
+                        err.0
+                    }
+                }
+            },
             false => Config::default()
         };
+        let current_dir = env::current_dir().unwrap().to_str().unwrap().to_owned();
 
-        let current_dir = std::env::current_dir().unwrap().to_str().unwrap().to_owned();
-
-        let username = std::env::var("USER").unwrap().to_owned();
+        let username = env::var("USER").unwrap().to_owned();
 
         let history = OpenOptions::new()
-            .append(true)
+            .write(true)
             .read(true)
             .open(&config.history_path);
 
@@ -96,8 +105,21 @@ fn main() -> Result<(), io::Error> {
     print!("{}", termion::clear::All);
 
     let mut history_index: usize = 0;
+    let mut current_history: Vec<String> = std::fs::read_to_string(&shell.config.history_path).unwrap()
+        .split("\n")
+        .map(|elem| {
+            let mut elem_string = String::from("\n");
+            elem_string.push_str(elem);
+            elem_string
+        })
+        .collect();
+
+    current_history.retain(|elem| elem != "\n");
 
     loop {
+        if current_history.len() >= shell.config.history_size {
+            current_history.remove(0);
+        }
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -161,14 +183,14 @@ fn main() -> Result<(), io::Error> {
                         continue;
                     }
 
-                    shell.history.write_all(format!("{}\n", shell.input).as_bytes()).unwrap();
+                    current_history.push(format!("\n{}", shell.input));
                     history_index = 0;
 
                     match args[0] {
                         "cd" => {
                             if args.len() > 1 {
                                 match inbuilt::cd(args[1]){
-                                    Ok(_) => shell.current_dir = std::env::current_dir().unwrap().to_str().unwrap().to_owned(),
+                                    Ok(_) => shell.current_dir = env::current_dir().unwrap().to_str().unwrap().to_owned(),
 
                                     Err(err) => shell.error = err.to_string()
                                 };
@@ -208,7 +230,10 @@ fn main() -> Result<(), io::Error> {
                             continue;
                         },
 
-                        "exshell.input" => break,
+                        "exit" => {
+                            shell.history.write_all(current_history.join("").as_bytes()).unwrap();
+                            break;
+                        }
 
                         _ => {}
                     }
@@ -251,6 +276,7 @@ fn main() -> Result<(), io::Error> {
                     shell.input.clear();
                 }
                 Key::Char('q') => {
+                    shell.history.write_all(current_history.join("").as_bytes()).unwrap();
                     break;
                 }
                 Key::Char(c) => {
@@ -260,26 +286,26 @@ fn main() -> Result<(), io::Error> {
                     shell.input.pop();
                 },
                 Key::Up => {
-                    let contents = std::fs::read_to_string(&shell.config.history_path).unwrap();
-                    let mut history_vec: Vec<&str> = contents.split('\n').collect();
-                    history_vec.reverse();
+                    let mut history_cloned = current_history.clone();
+                    history_cloned.reverse();
 
-                    if history_vec.len() > history_index + 1 {
-                        shell.input = String::from(history_vec[history_index + 1]);
+                    if current_history.len() > history_index {
+                        shell.input = String::from(history_cloned[history_index].trim_end())
+                            .replace("\n", "");
                         history_index += 1;
                     }
                 }
                 Key::Down => {
+                    let mut history_cloned = current_history.clone();
+                    history_cloned.reverse();
+
                     match history_index.cmp(&0) {
-                        std::cmp::Ordering::Greater => {
-
-                            let contents = std::fs::read_to_string(&shell.config.history_path).unwrap();
-                            let mut history_vec: Vec<&str> = contents.split_whitespace().collect();
-                            history_vec.reverse();
-
+                        Ordering::Greater => {
                             if history_index - 1 > 0 {
+                                shell.input = String::from(history_cloned[history_index - 1].trim_end())
+                                    .replace("\n", "");
                                 history_index -= 1;
-                                shell.input = String::from(history_vec[history_index - 1]);
+
                             } else {
                                 history_index = 0;
                                 shell.input = String::new();
