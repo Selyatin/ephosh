@@ -8,7 +8,7 @@ use tui::{
     style::{Style, Color, Modifier},
     text::{Spans, Span},
     widgets::{Block, Borders, Paragraph},
-    layout::{Layout, Constraint, Direction},
+    layout::{Layout, Constraint, Direction, Rect},
 };
 use std::{
     io::{self, Write},
@@ -17,7 +17,6 @@ use std::{
     fs::{File, OpenOptions},
     cmp::Ordering,
 };
-use config::Config;
 
 mod ui;
 mod utils;
@@ -25,8 +24,11 @@ mod event;
 mod non_blocking;
 mod inbuilt;
 mod config;
+mod cursor;
 
 use ui::Pane;
+use cursor::Cursor;
+use config::Config;
 
 struct Shell {
     pub username: String,
@@ -36,6 +38,8 @@ struct Shell {
     pub input: String,
     pub config: Config,
     pub history: File,
+    pub cursor: Cursor,
+    pub chunks: Vec<Rect>
 }
 impl Default for Shell {
     fn default() -> Self {
@@ -80,6 +84,8 @@ impl Default for Shell {
             input: "".to_owned(),
             panes: vec![],
             history,
+            cursor: Cursor::new(1, 1),
+            chunks: vec![]
         }
     }
 }
@@ -96,6 +102,7 @@ fn main() -> Result<(), io::Error> {
     // Clear the screen
     print!("{}", termion::clear::All);
 
+    print!("{}", termion::cursor::SteadyBar);
     let mut history_index: usize = 0;
     let mut current_history: Vec<String> = std::fs::read_to_string(&shell.config.history_path).unwrap()
         .split("\n")
@@ -122,12 +129,13 @@ fn main() -> Result<(), io::Error> {
                 ].as_ref())
                 .split(f.size());
 
+            shell.chunks = chunks;
             let block = Block::default()
                 .title("Input")
                 .borders(Borders::ALL);
-            f.render_widget(block, chunks[1]);
+            f.render_widget(block, shell.chunks[1]);
 
-            f.set_cursor(chunks[1].x + 1 + shell.input.len() as u16, chunks[1].y+1);
+            f.set_cursor(shell.cursor.x, shell.chunks[1].y+1);
 
             let panes_len = match shell.panes.len() {
                 0 => 1,
@@ -146,7 +154,7 @@ fn main() -> Result<(), io::Error> {
             let output_layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints(constraints)
-                .split(chunks[0]);
+                .split(shell.chunks[0]);
 
             for (i, pane) in shell.panes.iter().enumerate() {
                 f.render_widget(pane.get_output_as_paragraph(), output_layout[i]);
@@ -163,7 +171,7 @@ fn main() -> Result<(), io::Error> {
                 .block(Block::default()
                     .borders(Borders::ALL).title(status_info));
 
-            f.render_widget(status_line, chunks[1]);
+            f.render_widget(status_line, shell.chunks[1]);
         }).unwrap();
 
         if let event::Event::Input(input) = events.next().unwrap() {
@@ -177,6 +185,7 @@ fn main() -> Result<(), io::Error> {
 
                     current_history.push(format!("\n{}", shell.input));
                     history_index = 0;
+                    shell.cursor.x = 1;
 
                     match args[0] {
                         "cd" => {
@@ -282,19 +291,25 @@ fn main() -> Result<(), io::Error> {
                     break;
                 }
                 Key::Char(c) => {
-                    shell.input.push(c);
+                    shell.input.insert((shell.cursor.x - 1) as usize, c);
+                    shell.cursor.x += 1;
                 }
                 Key::Backspace => {
-                    shell.input.pop();
+                    if shell.cursor.x - 1 > 0 {
+                        shell.cursor.x -= 1;
+                        shell.input.pop();
+                    }
                 },
                 Key::Up => {
                     let mut history_cloned = current_history.clone();
                     history_cloned.reverse();
 
                     if current_history.len() > history_index {
-                        shell.input = String::from(history_cloned[history_index].trim_end())
+                        let command = history_cloned[history_index].trim_end();
+                        shell.input = String::from(command)
                             .replace("\n", "");
                         history_index += 1;
+                        shell.cursor.x = command.len() as u16;
                     }
                 }
                 Key::Down => {
@@ -304,20 +319,32 @@ fn main() -> Result<(), io::Error> {
                     match history_index.cmp(&0) {
                         Ordering::Greater => {
                             if history_index - 1 > 0 {
-                                shell.input = String::from(history_cloned[history_index - 1].trim_end())
+                                let command = history_cloned[history_index - 1].trim_end();
+                                shell.input = String::from(command)
                                     .replace("\n", "");
                                 history_index -= 1;
-
+                                shell.cursor.x = command.len() as u16;
                             } else {
                                 history_index = 0;
                                 shell.input = String::new();
+                                shell.cursor.x = 1;
                             }
                         }
                         _ => {
                             shell.input = String::new();
                         }
                     }
-                } 
+                }  
+                Key::Left => {
+                    if shell.cursor.x - 1 > 0 {
+                        shell.cursor.x -= 1;
+                    }
+                }
+                Key::Right => {
+                    if shell.cursor.x <= shell.input.len() as u16 {
+                        shell.cursor.x += 1;
+                    }
+                }
                 _ => {}
             }
         }
