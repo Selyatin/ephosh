@@ -201,6 +201,11 @@ fn main() -> Result<(), io::Error> {
                         "clear" => {
                             if args.len() < 2 {
                                 shell.error.clear();
+                                for pane in &mut shell.panes {
+                                    if let Err(err) = pane.kill_process(){
+                                        shell.error = err;
+                                    }
+                                }
                                 shell.panes.clear();
                                 shell.input.clear();
                                 continue;
@@ -218,6 +223,9 @@ fn main() -> Result<(), io::Error> {
 
                             let value = if index <= 1 {0} else {(index - 1) as usize};
 
+                            if let Err(err) = shell.panes[value].kill_process(){
+                                shell.error = err;
+                            }
                             shell.panes.remove(value);
 
                             shell.input.clear();
@@ -236,7 +244,7 @@ fn main() -> Result<(), io::Error> {
                                 continue;
                             }
 
-                            let index: usize = args[0].parse().unwrap_or(0);
+                            let index: usize = args[1].parse().unwrap_or(0);
                             
                             let message = args[2].to_owned();
 

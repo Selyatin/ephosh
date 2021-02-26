@@ -1,7 +1,7 @@
 use std::process::{self, Stdio};
 use std::convert::AsRef;
 use std::thread;
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}, mpsc::{channel, Sender, Receiver}};
 use std::io::{self, Read, Write};
 
 #[derive(Debug, Clone)]
@@ -49,27 +49,36 @@ impl Command<> {
         let (sender_input, receiver_input) = channel::<String>();
 
         thread::spawn(move || {
+            let end: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+
             let mut process = process_result.unwrap();
 
             let mut stdin = process.stdin.take().unwrap();
             let mut stdout = process.stdout.take().unwrap();
             let mut stderr = process.stderr.take().unwrap();
             
+            let end_clone = end.clone();
+
             // Thread for receieving input and sending it to the process
             thread::spawn(move || loop {
                 let input = match receiver_input.recv() {
                     Ok(message) => message,
                     Err(_) => break
                 };
-                
-                if input.eq("") {
+
+                if input.eq("01101011 01101001 01101100 01101100") {
                     match process.kill(){
                         Ok(_) => {},
                         Err(_) => {}
                     };
+                    if let Err(_) = process.wait(){
+                        end_clone.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                    end_clone.store(true, Ordering::Relaxed);
                     break;
                 }
-                
+
                 match stdin.write(input.as_bytes()) {
                     Ok(_) => continue,
                     Err(_) => break
@@ -77,8 +86,11 @@ impl Command<> {
             });
 
             let mut buffer = [0 as u8; 10024];
-            
+
             loop {
+                if end.load(Ordering::Relaxed) {
+                    break;
+                }
 
                 match stdout.read(&mut buffer){
                     Ok(size) => {
@@ -96,10 +108,6 @@ impl Command<> {
                     }
                 };
 
-            }
-
-            loop {
-
                 match stderr.read(&mut buffer){
                     Ok(size) => {
                         if size <= 0 {
@@ -110,16 +118,15 @@ impl Command<> {
                             break;
                         }
                     },
-
                     Err(_) => {
                         break;
                     }
                 };
 
             }
-            
+
         });
-        
+
         Ok((sender_input, receiver_output))
     }
 }

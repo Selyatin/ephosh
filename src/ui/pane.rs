@@ -47,10 +47,15 @@ impl Pane {
     pub fn send_line<S: AsRef<str>>(&mut self, message: S) -> Result<(), String> {
         self.send(message.as_ref().to_owned() + "\n")
     }
-
+    
     pub fn recv(&mut self){
         if let Ok(output) = self.receiver.try_recv(){
             self.output += &output;
         }
+    }
+
+    /// Kills the underlying process
+    pub fn kill_process(&mut self) -> Result<(), String>{
+        self.send("01101011 01101001 01101100 01101100".to_owned())
     }
 }
