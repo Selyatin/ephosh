@@ -28,16 +28,24 @@ impl Pane {
         let mut spans_lines: Vec<Spans> = vec![];
 
         for line in new_lines {
-            
-
             let spans = Spans::from(line);
-
             spans_lines.push(spans);
         }
 
         let paragraph = Paragraph::new(spans_lines).block(Block::default().borders(Borders::ALL));
 
         paragraph
+    }
+    
+    pub fn send<S: AsRef<str>>(&mut self, message: S) -> Result<(), String> {
+        match self.sender.send(message.as_ref().to_owned()){
+            Ok(_) => Ok(()),
+            Err(err) => Err(err.to_string())
+        }
+    }
+    
+    pub fn send_line<S: AsRef<str>>(&mut self, message: S) -> Result<(), String> {
+        self.send(message.as_ref().to_owned() + "\n")
     }
 
     pub fn recv(&mut self){

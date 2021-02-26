@@ -223,6 +223,29 @@ fn main() -> Result<(), io::Error> {
                             shell.input.clear();
                             continue;
                         }
+                        "send" => {
+                            if args.len() < 3 {
+                                shell.error = "send command accepts 2 parameters: position, message".to_owned();
+                                shell.input.clear();
+                                continue;
+                            }
+
+                            if shell.panes.len() <= 0 {
+                                shell.error = "No panes to communicate with".to_owned();
+                                shell.input.clear();
+                                continue;
+                            }
+
+                            let index: usize = args[0].parse().unwrap_or(0);
+                            
+                            let message = args[2].to_owned();
+
+                            if let Err(err) = shell.panes[index].send_line(message){
+                                shell.error = err;
+                                shell.input.clear();
+                                continue;
+                            }
+                        },
 
                         "reload" => {
                             shell.commands = utils::get_commands_from_path().unwrap();

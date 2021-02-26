@@ -2,7 +2,7 @@ use std::process::{self, Stdio};
 use std::convert::AsRef;
 use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -46,17 +46,38 @@ impl Command<> {
         }
 
         let (sender_output, receiver_output) = channel::<String>();
-        let (sender_input, _receiver_input) = channel::<String>();
+        let (sender_input, receiver_input) = channel::<String>();
 
         thread::spawn(move || {
             let mut process = process_result.unwrap();
 
-            let _stdin = process.stdin.take().unwrap();
+            let mut stdin = process.stdin.take().unwrap();
             let mut stdout = process.stdout.take().unwrap();
             let mut stderr = process.stderr.take().unwrap();
+            
+            // Thread for receieving input and sending it to the process
+            thread::spawn(move || loop {
+                let input = match receiver_input.recv() {
+                    Ok(message) => message,
+                    Err(_) => break
+                };
+                
+                if input.eq("") {
+                    match process.kill(){
+                        Ok(_) => {},
+                        Err(_) => {}
+                    };
+                    break;
+                }
+                
+                match stdin.write(input.as_bytes()) {
+                    Ok(_) => continue,
+                    Err(_) => break
+                };
+            });
 
             let mut buffer = [0 as u8; 10024];
-
+            
             loop {
 
                 match stdout.read(&mut buffer){
@@ -97,7 +118,6 @@ impl Command<> {
 
             }
             
-            drop(buffer);
         });
         
         Ok((sender_input, receiver_output))
