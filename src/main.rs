@@ -14,7 +14,6 @@ use std::{
     io::{self, Write},
     env,
     path::Path,
-    collections::HashMap,
     fs::{File, OpenOptions},
     cmp::Ordering,
 };
@@ -32,7 +31,6 @@ use ui::Pane;
 struct Shell {
     pub username: String,
     pub current_dir: String,
-    pub commands: HashMap<String, String>,
     pub panes: Vec<Pane>,
     pub error: String,
     pub input: String,
@@ -41,11 +39,6 @@ struct Shell {
 }
 impl Default for Shell {
     fn default() -> Self {
-        let commands = match utils::get_commands_from_path(){
-            Ok(commands) => commands,
-            Err(err) => panic!("Error: {}", err)
-        };
-
         let home_var = match env::var("HOME") {
             Ok(var) => var,
             Err(_) => panic!("Error: Couldn't get HOME var")
@@ -82,7 +75,6 @@ impl Default for Shell {
         Self {
             username,
             current_dir,
-            commands,
             config,
             error: "".to_owned(),
             input: "".to_owned(),
@@ -255,12 +247,6 @@ fn main() -> Result<(), io::Error> {
                             }
                         },
 
-                        "reload" => {
-                            shell.commands = utils::get_commands_from_path().unwrap();
-                            shell.input.clear();
-                            continue;
-                        },
-
                         "exit" => {
                             shell.history.write_all(current_history.join("").as_bytes()).unwrap();
                             break;
@@ -269,15 +255,7 @@ fn main() -> Result<(), io::Error> {
                         _ => {}
                     }
 
-                    let cmd = match shell.commands.get(args[0]){
-                        Some(cmd) => cmd,
-                        None => {
-                            shell.input.clear();
-                            continue;
-                        }
-                    };
-
-                    let command_result = non_blocking::Command::new(&cmd).args(&args[1..]).spawn();
+                    let command_result = non_blocking::Command::new(args[0]).args(&args[1..]).spawn();
 
                     if let Err(_err) = command_result {
                         if shell.panes.len() < shell.config.max_outputs { 
