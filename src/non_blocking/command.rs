@@ -108,6 +108,13 @@ impl Command<> {
                     }
                 };
 
+            }
+            
+            loop {
+                if end.load(Ordering::Relaxed) {
+                    break;
+                }
+
                 match stderr.read(&mut buffer){
                     Ok(size) => {
                         if size <= 0 {
@@ -124,7 +131,6 @@ impl Command<> {
                 };
 
             }
-
         });
 
         Ok((sender_input, receiver_output))

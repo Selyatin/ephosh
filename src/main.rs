@@ -269,16 +269,6 @@ fn main() -> Result<(), io::Error> {
                         _ => {}
                     }
 
-                    let path_var_result = env::var("PATH");
-
-                    if let Err(_err) = path_var_result {
-                        if shell.panes.len() < shell.config.max_outputs {
-                            //shell.panes.push(err.to_string());
-                            shell.input.clear();
-                        }
-                        continue;
-                    }
-
                     let cmd = match shell.commands.get(args[0]){
                         Some(cmd) => cmd,
                         None => {
@@ -301,6 +291,9 @@ fn main() -> Result<(), io::Error> {
                     let pane = Pane::new(sender, receiver);
 
                     if shell.panes.len() >= shell.config.max_outputs {
+                        if let Err(err) = shell.panes[0].kill_process(){
+                            shell.error = err;
+                        }
                         shell.panes.remove(0);
                     }
                     shell.panes.push(pane);
