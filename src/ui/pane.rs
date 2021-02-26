@@ -1,61 +1,48 @@
 use tui::widgets::{Paragraph, Block, Borders};
-use tui::text::{Spans};
 use std::sync::mpsc::{Sender, Receiver};
 
 #[derive(Debug)]
 pub struct Pane {
-    output: String,
-    receiver: Receiver<String>,
-    sender: Sender<String>
+    output: Vec<u8>,
+    receiver: Receiver<Vec<u8>>,
+    sender: Sender<Vec<u8>>
 }
 
 impl Pane {
-    pub fn new(sender: Sender<String>, receiver: Receiver<String>) -> Self{
+    pub fn new(sender: Sender<Vec<u8>>, receiver: Receiver<Vec<u8>>) -> Self{
         Self {
-            output: String::new(),
+            output: vec![],
             receiver: receiver,
             sender: sender
         }
     }
 
-    pub fn _get_output(&self) -> &str {
-        &self.output
-    }
-
     pub fn get_output_as_paragraph(&self) -> Paragraph {
-        let new_lines: Vec<&str> = self.output.split("\n").collect();
-        
-        let mut spans_lines: Vec<Spans> = vec![];
-
-        for line in new_lines {
-            let spans = Spans::from(line);
-            spans_lines.push(spans);
-        }
-
-        let paragraph = Paragraph::new(spans_lines).block(Block::default().borders(Borders::ALL));
+        let text = ansi4tui::bytes_to_text(&self.output);
+        let paragraph = Paragraph::new(text).block(Block::default().borders(Borders::ALL));
 
         paragraph
     }
     
     pub fn send<S: AsRef<str>>(&mut self, message: S) -> Result<(), String> {
-        match self.sender.send(message.as_ref().to_owned()){
+        match self.sender.send(message.as_ref().as_bytes().to_vec()){
             Ok(_) => Ok(()),
             Err(err) => Err(err.to_string())
         }
     }
     
     pub fn send_line<S: AsRef<str>>(&mut self, message: S) -> Result<(), String> {
-        self.send(message.as_ref().to_owned() + "\n")
+        self.send(message.as_ref())
     }
     
     pub fn recv(&mut self){
-        if let Ok(output) = self.receiver.try_recv(){
-            self.output += &output;
+        if let Ok(mut output) = self.receiver.try_recv(){
+            self.output.append(&mut output);
         }
     }
 
     /// Kills the underlying process
     pub fn kill_process(&mut self) -> Result<(), String>{
-        self.send("01101011 01101001 01101100 01101100".to_owned())
+        self.send("01101011 01101001 01101100 01101100")
     }
 }

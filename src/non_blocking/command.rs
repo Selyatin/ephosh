@@ -33,7 +33,7 @@ impl Command<> {
         self
     }
 
-    pub fn spawn(&self) -> io::Result<(Sender<String>, Receiver<String>)>{
+    pub fn spawn(&self) -> io::Result<(Sender<Vec<u8>>, Receiver<Vec<u8>>)>{
         let process_result = process::Command::new(&self.command)
             .args(&self.args)
             .stdout(Stdio::piped())
@@ -45,8 +45,8 @@ impl Command<> {
             return Err(err);
         }
 
-        let (sender_output, receiver_output) = channel::<String>();
-        let (sender_input, receiver_input) = channel::<String>();
+        let (sender_output, receiver_output) = channel::<Vec<u8>>();
+        let (sender_input, receiver_input) = channel::<Vec<u8>>();
 
         thread::spawn(move || {
             let end: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
@@ -66,7 +66,7 @@ impl Command<> {
                     Err(_) => break
                 };
 
-                if input.eq("01101011 01101001 01101100 01101100") {
+                if input.eq("01101011 01101001 01101100 01101100".as_bytes()) {
                     match process.kill(){
                         Ok(_) => {},
                         Err(_) => {}
@@ -79,13 +79,13 @@ impl Command<> {
                     break;
                 }
 
-                match stdin.write(input.as_bytes()) {
+                match stdin.write(&input) {
                     Ok(_) => continue,
                     Err(_) => break
                 };
             });
 
-            let mut buffer = [0 as u8; 10024];
+            let mut buffer: Vec<u8> = vec![0 as u8; 1024];
 
             loop {
                 if end.load(Ordering::Relaxed) {
@@ -98,7 +98,7 @@ impl Command<> {
                             break;
                         }
 
-                        if sender_output.send(String::from_utf8_lossy(&buffer).to_string()).is_err(){
+                        if sender_output.send(buffer.clone()).is_err(){
                             break;   
                         }
                     },
@@ -121,7 +121,7 @@ impl Command<> {
                             break;
                         }
 
-                        if sender_output.send(String::from_utf8_lossy(&buffer).to_string()).is_err(){
+                        if sender_output.send(buffer.clone()).is_err(){
                             break;
                         }
                     },
