@@ -72,7 +72,7 @@ fn main() -> Result<(), io::Error> {
                 .borders(Borders::ALL);
             f.render_widget(block, shell.chunks[1]);
 
-            f.set_cursor(shell.cursor.x, shell.chunks[1].y+1);
+            f.set_cursor(shell.cursor.get_x(), shell.chunks[1].y + 1);
 
             let panes_len = match shell.panes.len() {
                 0 => 1,
@@ -122,7 +122,7 @@ fn main() -> Result<(), io::Error> {
 
                     current_history.push(format!("\n{}", shell.input));
                     history_index = 0;
-                    shell.cursor.x = 1;
+                    shell.cursor.move_cursor(1, shell.cursor.get_y());
 
                     match args[0] {
                         "cd" => {
@@ -228,13 +228,13 @@ fn main() -> Result<(), io::Error> {
                     break;
                 }
                 Key::Char(c) => {
-                    shell.input.insert((shell.cursor.x - 1) as usize, c);
-                    shell.cursor.x += 1;
+                    shell.input.insert((shell.cursor.get_x() - 1) as usize, c);
+                    shell.cursor.move_right();
                 }
                 Key::Backspace => {
-                    if shell.cursor.x - 1 > 0 {
-                        shell.cursor.x -= 1;
-                        shell.input.pop();
+                    if shell.cursor.get_x() - 1 > 0 {
+                        shell.cursor.move_left();
+                        shell.input.remove((shell.cursor.get_x() - 1) as usize);
                     }
                 },
                 Key::Up => {
@@ -246,7 +246,7 @@ fn main() -> Result<(), io::Error> {
                         shell.input = String::from(command)
                             .replace("\n", "");
                         history_index += 1;
-                        shell.cursor.x = command.len() as u16;
+                        shell.cursor.move_cursor(command.len() as u16, shell.cursor.get_y());
                     }
                 }
                 Key::Down => {
@@ -260,11 +260,11 @@ fn main() -> Result<(), io::Error> {
                                 shell.input = String::from(command)
                                     .replace("\n", "");
                                 history_index -= 1;
-                                shell.cursor.x = command.len() as u16;
+                                shell.cursor.move_cursor(command.len() as u16, shell.cursor.get_y());
                             } else {
                                 history_index = 0;
                                 shell.input = String::new();
-                                shell.cursor.x = 1;
+                                shell.cursor.move_cursor(1, shell.cursor.get_y());
                             }
                         }
                         _ => {
@@ -273,13 +273,13 @@ fn main() -> Result<(), io::Error> {
                     }
                 }  
                 Key::Left => {
-                    if shell.cursor.x - 1 > 0 {
-                        shell.cursor.x -= 1;
+                    if shell.cursor.get_x() - 1 > 0 {
+                        shell.cursor.move_left();
                     }
                 }
                 Key::Right => {
-                    if shell.cursor.x <= shell.input.len() as u16 {
-                        shell.cursor.x += 1;
+                    if shell.cursor.get_x() <= shell.input.len() as u16 {
+                        shell.cursor.move_right();
                     }
                 }
                 _ => {}
