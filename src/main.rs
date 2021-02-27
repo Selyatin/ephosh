@@ -18,13 +18,12 @@ use std::{
 
 mod ui;
 mod utils;
-mod event;
 mod shell;
 mod non_blocking;
 mod inbuilt;
 mod config;
 
-use ui::Pane;
+use ui::{Pane, input::{self, InputMode}};
 use shell::Shell;
 
 fn main() -> Result<(), io::Error> {
@@ -34,7 +33,7 @@ fn main() -> Result<(), io::Error> {
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let events = event::Events::new();
+    let events = input::Events::new();
 
     // Clear the screen
     print!("{}", termion::clear::All);
@@ -48,7 +47,7 @@ fn main() -> Result<(), io::Error> {
             elem_string.push_str(elem);
             elem_string
         })
-        .collect();
+    .collect();
 
     current_history.retain(|elem| elem != "\n");
 
@@ -100,9 +99,28 @@ fn main() -> Result<(), io::Error> {
             let separator = Span::raw(" | ");
             let username = Span::styled(&shell.username, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD));
             let current_dir = Span::styled(&shell.current_dir, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD));
+
+            let input_mode = match shell.input_mode {
+                InputMode::Command => "Mode: Command",
+                InputMode::Interact => "Mode: Interact"
+            };
+
+            let input_mode_span = Span::styled(input_mode, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD));
+            let active_pane = Span::styled(format!("Interacting With: {}", shell.active_pane), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
             let error = Span::styled(&shell.error, Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
 
-            let status_info = Spans::from(vec![Span::raw("[ "), username, separator.to_owned(), current_dir, separator, error, Span::raw(" ]")]);
+            let status_info = Spans::from(vec![
+                Span::raw("[ "), 
+                username, 
+                separator.clone(), 
+                current_dir, 
+                separator.clone(), 
+                input_mode_span,
+                separator.clone(),
+                active_pane,
+                separator,
+                error, 
+                Span::raw(" ]")]);
 
             let status_line = Paragraph::new(shell.input.as_ref())
                 .block(Block::default()
@@ -111,182 +129,210 @@ fn main() -> Result<(), io::Error> {
             f.render_widget(status_line, shell.chunks[1]);
         }).unwrap();
 
-        if let event::Event::Input(input) = events.next().unwrap() {
-            match input {
-                Key::Char('\n') => {
-                    let args: Vec<&str> = shell.input.split_whitespace().collect();
+        if let input::Event::Input(input) = events.next().unwrap() {
+            let panes_len = shell.panes.len();
+            if shell.input_mode == InputMode::Interact && panes_len > 0{
+                match input {
+                    Key::Char(c) => {
+                        let index = shell.active_pane;
 
-                    if args.is_empty() {
-                        continue;
+                        let pane = &mut shell.panes[index];
+
+                        match pane.send(c.to_string()){
+                            Ok(_) => {},
+                            Err(err) => shell.error = err
+                        };
+                    },
+
+                    Key::Ctrl(c) => {
+                        match c {
+                            'e' => shell.input_mode = InputMode::Command,
+                            'a' => {
+                                let active_pane_index = shell.active_pane - 1; 
+
+                                if active_pane_index < panes_len {
+                                    shell.active_pane = active_pane_index;
+                                }
+                            },
+                            'd' => {
+                                let active_pane_index = shell.active_pane + 1;
+
+                                if active_pane_index < panes_len {
+                                    shell.active_pane = active_pane_index;
+                                }
+                            },
+                            _ => {}
+                        };
                     }
 
-                    current_history.push(format!("\n{}", shell.input));
-                    history_index = 0;
-                    shell.cursor.move_cursor(1, shell.cursor.get_y());
+                    _ => {}
+                };
+            }else{
+                match input {
+                    Key::Char('\n') => {
+                        let args: Vec<&str> = shell.input.split_whitespace().collect();
 
-                    match args[0] {
-                        "cd" => {
-                            if args.len() > 1 {
-                                match inbuilt::cd(args[1]){
-                                    Ok(_) => shell.current_dir = env::current_dir().unwrap().to_str().unwrap().to_owned(),
-
-                                    Err(err) => shell.error = err.to_string()
-                                };
-                            };
-                            shell.input.clear();
+                        if args.is_empty() {
                             continue;
                         }
-                        "clear" => {
-                            if args.len() < 2 {
-                                shell.error.clear();
-                                for pane in &mut shell.panes {
-                                    if let Err(err) = pane.kill_process(){
-                                        shell.error = err;
-                                    }
-                                }
-                                shell.panes.clear();
+
+                        current_history.push(format!("\n{}", shell.input));
+                        history_index = 0;
+                        shell.cursor.move_cursor(1, shell.cursor.get_y());
+
+                        match args[0] {
+                            "cd" => {
+                                if args.len() > 1 {
+                                    match inbuilt::cd(args[1]){
+                                        Ok(_) => shell.current_dir = env::current_dir().unwrap().to_str().unwrap().to_owned(),
+
+                                        Err(err) => shell.error = err.to_string()
+                                    };
+                                };
                                 shell.input.clear();
                                 continue;
                             }
-
-                            let index = match args[1].parse::<usize>(){
-                                Ok(value) => value,
-
-                                Err(_) => {
-                                    shell.error = "Incorrect arguments were provided".to_owned();
+                            "clear" => {
+                                if args.len() < 2 {
+                                    shell.error.clear();
+                                    for pane in &mut shell.panes {
+                                        if let Err(err) = pane.kill_process(){
+                                            shell.error = err;
+                                        }
+                                    }
+                                    shell.panes.clear();
                                     shell.input.clear();
                                     continue;
                                 }
-                            };
 
-                            let value = if index <= 1 {0} else {(index - 1) as usize};
+                                let index = match args[1].parse::<usize>(){
+                                    Ok(value) => value,
 
-                            if let Err(err) = shell.panes[value].kill_process(){
-                                shell.error = err;
+                                    Err(_) => {
+                                        shell.error = "Incorrect arguments were provided".to_owned();
+                                        shell.input.clear();
+                                        continue;
+                                    }
+                                };
+
+                                let value = if index <= 1 {0} else {(index - 1) as usize};
+
+                                if let Err(err) = shell.panes[value].kill_process(){
+                                    shell.error = err;
+                                }
+                                shell.panes.remove(value);
+
+                                shell.input.clear();
+                                continue;
                             }
-                            shell.panes.remove(value);
 
-                            shell.input.clear();
+                            "exit" => {
+                                shell.history.write_all(current_history.join("").as_bytes()).unwrap();
+                                break;
+                            }
+
+                            _ => {}
+                        }
+
+                        let command_result = non_blocking::Command::new(args[0]).args(&args[1..]).spawn();
+
+                        if let Err(_err) = command_result {
+                            if shell.panes.len() < shell.config.max_outputs { 
+                                shell.input.clear();
+                            }
                             continue;
                         }
-                        "send" => {
-                            if args.len() < 3 {
-                                shell.error = "send command accepts 2 parameters: position, message".to_owned();
-                                shell.input.clear();
-                                continue;
-                            }
 
-                            if shell.panes.len() <= 0 {
-                                shell.error = "No panes to communicate with".to_owned();
-                                shell.input.clear();
-                                continue;
-                            }
+                        let (sender, receiver) = command_result.unwrap();
 
-                            let index: usize = args[1].parse().unwrap_or(0);
-                            
-                            let message = args[2].to_owned();
+                        let pane = Pane::new(sender, receiver);
 
-                            if let Err(err) = shell.panes[index].send_line(message){
+                        if shell.panes.len() >= shell.config.max_outputs {
+                            if let Err(err) = shell.panes[0].kill_process(){
                                 shell.error = err;
-                                shell.input.clear();
-                                continue;
                             }
-                        },
-
-                        "exit" => {
-                            shell.history.write_all(current_history.join("").as_bytes()).unwrap();
-                            break;
+                            shell.panes.remove(0);
                         }
-
-                        _ => {}
+                        shell.panes.push(pane);
+                        shell.input.clear();
                     }
 
-                    let command_result = non_blocking::Command::new(args[0]).args(&args[1..]).spawn();
-
-                    if let Err(_err) = command_result {
-                        if shell.panes.len() < shell.config.max_outputs { 
-                            shell.input.clear();
-                        }
-                        continue;
+                    Key::Char('q') => {
+                        shell.history.write_all(current_history.join("").as_bytes()).unwrap();
+                        break;
                     }
 
-                    let (sender, receiver) = command_result.unwrap();
-
-                    let pane = Pane::new(sender, receiver);
-
-                    if shell.panes.len() >= shell.config.max_outputs {
-                        if let Err(err) = shell.panes[0].kill_process(){
-                            shell.error = err;
-                        }
-                        shell.panes.remove(0);
-                    }
-                    shell.panes.push(pane);
-                    shell.input.clear();
-                }
-                Key::Char('q') => {
-                    shell.history.write_all(current_history.join("").as_bytes()).unwrap();
-                    break;
-                }
-                Key::Char(c) => {
-                    shell.input.insert((shell.cursor.get_x() - 1) as usize, c);
-                    shell.cursor.move_right();
-                }
-                Key::Backspace => {
-                    if shell.cursor.get_x() - 1 > 0 {
-                        shell.cursor.move_left();
-                        shell.input.remove((shell.cursor.get_x() - 1) as usize);
-                    }
-                },
-                Key::Up => {
-                    let mut history_cloned = current_history.clone();
-                    history_cloned.reverse();
-
-                    if current_history.len() > history_index {
-                        let command = history_cloned[history_index].trim_end();
-                        shell.input = String::from(command)
-                            .replace("\n", "");
-                        history_index += 1;
-                        shell.cursor.move_cursor(command.len() as u16, shell.cursor.get_y());
-                    }
-                }
-                Key::Down => {
-                    let mut history_cloned = current_history.clone();
-                    history_cloned.reverse();
-
-                    match history_index.cmp(&0) {
-                        Ordering::Greater => {
-                            if history_index - 1 > 0 {
-                                let command = history_cloned[history_index - 1].trim_end();
-                                shell.input = String::from(command)
-                                    .replace("\n", "");
-                                history_index -= 1;
-                                shell.cursor.move_cursor(command.len() as u16, shell.cursor.get_y());
-                            } else {
-                                history_index = 0;
-                                shell.input = String::new();
-                                shell.cursor.move_cursor(1, shell.cursor.get_y());
-                            }
-                        }
-                        _ => {
-                            shell.input = String::new();
-                        }
-                    }
-                }  
-                Key::Left => {
-                    if shell.cursor.get_x() - 1 > 0 {
-                        shell.cursor.move_left();
-                    }
-                }
-                Key::Right => {
-                    if shell.cursor.get_x() <= shell.input.len() as u16 {
+                    Key::Char(c) => {
+                        shell.input.insert((shell.cursor.get_x() - 1) as usize, c);
                         shell.cursor.move_right();
                     }
-                }
-                _ => {}
-            }
-        }
 
-        for pane in shell.panes.iter_mut() {
+                    Key::Backspace => {
+                        if shell.cursor.get_x() - 1 > 0 {
+                            shell.cursor.move_left();
+                            shell.input.remove((shell.cursor.get_x() - 1) as usize);
+                        }
+                    }
+
+                    Key::Up => {
+                        let mut history_cloned = current_history.clone();
+                        history_cloned.reverse();
+
+                        if current_history.len() > history_index {
+                            let command = history_cloned[history_index].trim_end();
+                            shell.input = String::from(command)
+                                .replace("\n", "");
+                            history_index += 1;
+                            shell.cursor.move_cursor(command.len() as u16, shell.cursor.get_y());
+                        }
+                    }
+
+                    Key::Down => {
+                        let mut history_cloned = current_history.clone();
+                        history_cloned.reverse();
+
+                        match history_index.cmp(&0) {
+                            Ordering::Greater => {
+                                if history_index - 1 > 0 {
+                                    let command = history_cloned[history_index - 1].trim_end();
+                                    shell.input = String::from(command)
+                                        .replace("\n", "");
+                                    history_index -= 1;
+                                    shell.cursor.move_cursor(command.len() as u16, shell.cursor.get_y());
+                                } else {
+                                    history_index = 0;
+                                    shell.input = String::new();
+                                    shell.cursor.move_cursor(1, shell.cursor.get_y());
+                                }
+                            }
+                            _ => {
+                                shell.input = String::new();
+                            }
+                        }
+                    }
+
+                    Key::Left => {
+                        if shell.cursor.get_x() - 1 > 0 {
+                            shell.cursor.move_left();
+                        }
+                    }
+
+                    Key::Right => {
+                        if shell.cursor.get_x() <= shell.input.len() as u16 {
+                            shell.cursor.move_right();
+                        }
+                    }
+
+                    Key::Ctrl(c) => {
+                        if c == 'e'{
+                            shell.input_mode = InputMode::Interact;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        };
+        for pane in &mut shell.panes {
             pane.recv();
         }
     }

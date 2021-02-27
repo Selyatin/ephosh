@@ -6,9 +6,14 @@ use std::sync::{
 };
 use std::thread;
 use std::time::Duration;
-
 use termion::event::Key;
 use termion::input::TermRead;
+
+#[derive(PartialEq)]
+pub enum InputMode {
+    Command,
+    Interact
+}
 
 pub enum Event<I> {
     Input(I),

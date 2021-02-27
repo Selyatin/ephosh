@@ -2,7 +2,8 @@ use super::{
     config::Config,
     ui::{
         Pane,
-        Cursor
+        Cursor,
+        input::InputMode
     }
 };
 use std::{
@@ -16,8 +17,10 @@ pub struct Shell {
     pub username: String,
     pub current_dir: String,
     pub panes: Vec<Pane>,
+    pub active_pane: usize,
     pub error: String,
     pub input: String,
+    pub input_mode: InputMode,
     pub cursor: Cursor,
     pub config: Config,
     pub chunks: Vec<Rect>,
@@ -65,7 +68,9 @@ impl Default for Shell {
             config,
             error: "".to_owned(),
             input: "".to_owned(),
+            input_mode: InputMode::Command,
             panes: vec![],
+            active_pane: 0,
             cursor: Cursor::new(1, 1),
             chunks: vec![],
             history,
