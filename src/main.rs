@@ -164,6 +164,12 @@ fn main() -> Result<(), io::Error> {
                             _ => {}
                         };
                     }
+                    Key::Down => {
+                        shell.panes[shell.active_pane].scroll_down();
+                    }
+                    Key::Up => {
+                        shell.panes[shell.active_pane].scroll_up();
+                    }
 
                     _ => {}
                 };
