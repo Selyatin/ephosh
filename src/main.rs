@@ -92,7 +92,7 @@ fn main() -> Result<(), io::Error> {
                 .constraints(constraints)
                 .split(shell.chunks[0]);
 
-            for (i, pane) in shell.panes.iter().enumerate() {
+            for (i, pane) in shell.panes.iter_mut().enumerate() {
                 f.render_widget(pane.get_output_as_paragraph(), output_layout[i]);
             }
 
@@ -138,7 +138,7 @@ fn main() -> Result<(), io::Error> {
 
                         let pane = &mut shell.panes[index];
 
-                        match pane.send(c.to_string()){
+                        match pane.send(c){
                             Ok(_) => {},
                             Err(err) => shell.error = err
                         };
@@ -196,9 +196,7 @@ fn main() -> Result<(), io::Error> {
                                 if args.len() < 2 {
                                     shell.error.clear();
                                     for pane in &mut shell.panes {
-                                        if let Err(err) = pane.kill_process(){
-                                            shell.error = err;
-                                        }
+                                        pane.kill_process();
                                     }
                                     shell.panes.clear();
                                     shell.input.clear();
@@ -216,10 +214,8 @@ fn main() -> Result<(), io::Error> {
                                 };
 
                                 let value = if index <= 1 {0} else {(index - 1) as usize};
-
-                                if let Err(err) = shell.panes[value].kill_process(){
-                                    shell.error = err;
-                                }
+                                
+                                shell.panes[value].kill_process();
                                 shell.panes.remove(value);
 
                                 shell.input.clear();
@@ -233,24 +229,21 @@ fn main() -> Result<(), io::Error> {
 
                             _ => {}
                         }
+                        
+                        let mut command = non_blocking::Command::new(args[0]);
 
-                        let command_result = non_blocking::Command::new(args[0]).args(&args[1..]).spawn();
-
-                        if let Err(_err) = command_result {
-                            if shell.panes.len() < shell.config.max_outputs { 
-                                shell.input.clear();
-                            }
+                        command.args(&args[1..]);
+                        
+                        if let Err(err) = command.spawn(){
+                            shell.error = err;
+                            shell.input.clear();
                             continue;
                         }
 
-                        let (sender, receiver) = command_result.unwrap();
-
-                        let pane = Pane::new(sender, receiver);
+                        let pane = Pane::new(command);
 
                         if shell.panes.len() >= shell.config.max_outputs {
-                            if let Err(err) = shell.panes[0].kill_process(){
-                                shell.error = err;
-                            }
+                            shell.panes[0].kill_process();
                             shell.panes.remove(0);
                         }
                         shell.panes.push(pane);
@@ -332,9 +325,6 @@ fn main() -> Result<(), io::Error> {
                 }
             }
         };
-        for pane in &mut shell.panes {
-            pane.recv();
-        }
     }
     Ok(())
 }

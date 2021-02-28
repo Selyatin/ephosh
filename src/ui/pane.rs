@@ -1,48 +1,41 @@
 use tui::widgets::{Paragraph, Block, Borders};
-use std::sync::mpsc::{Sender, Receiver};
+use tui::text::Text;
+
+use crate::non_blocking::Command;
 
 #[derive(Debug)]
 pub struct Pane {
-    output: Vec<u8>,
-    receiver: Receiver<Vec<u8>>,
-    sender: Sender<Vec<u8>>
+    command: Command,
 }
 
 impl Pane {
-    pub fn new(sender: Sender<Vec<u8>>, receiver: Receiver<Vec<u8>>) -> Self{
+    pub fn new(command: Command) -> Self{
+
         Self {
-            output: vec![],
-            receiver: receiver,
-            sender: sender
+            command
         }
     }
 
-    pub fn get_output_as_paragraph(&self) -> Paragraph {
-        let text = ansi4tui::bytes_to_text(&self.output);
+    pub fn get_output_as_paragraph(&mut self) -> Paragraph {
+        let text = match self.command.get_output(){
+            Ok(output) => ansi4tui::bytes_to_text(&output),
+            Err(err) => Text::from(err)
+        };
+
         let paragraph = Paragraph::new(text).block(Block::default().borders(Borders::ALL));
 
         paragraph
     }
     
-    pub fn send<S: AsRef<str>>(&mut self, message: S) -> Result<(), String> {
-        match self.sender.send(message.as_ref().as_bytes().to_vec()){
+    pub fn send(&mut self, message: char) -> Result<(), String> {
+        match self.command.send_char(message){
             Ok(_) => Ok(()),
             Err(err) => Err(err.to_string())
         }
     }
     
-    pub fn send_line<S: AsRef<str>>(&mut self, message: S) -> Result<(), String> {
-        self.send(message.as_ref())
-    }
-    
-    pub fn recv(&mut self){
-        if let Ok(mut output) = self.receiver.try_recv(){
-            self.output.append(&mut output);
-        }
-    }
-
     /// Kills the underlying process
-    pub fn kill_process(&mut self) -> Result<(), String>{
-        self.send("01101011 01101001 01101100 01101100")
+    pub fn kill_process(&mut self){
+        self.command.kill_process()
     }
 }
