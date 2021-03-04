@@ -5,25 +5,13 @@ use crate::non_blocking::Command;
 
 #[derive(Debug)]
 pub struct Pane {
-    output: Vec<u8>,
-    offset: usize,
-    receiver: Receiver<Vec<u8>>,
-    sender: Sender<Vec<u8>>
+    command: Command,
 }
 
 impl Pane {
     pub fn new(command: Command) -> Self{
-        Self {
-            output: vec![],
-            offset: 0,
-            receiver: receiver,
-            sender: sender
-        }
-    }
 
-    pub fn get_output_as_paragraph(&self) -> Paragraph {
-        let text = ansi4tui::bytes_to_text(&self.output);
-        let paragraph = Paragraph::new(text).block(Block::default().borders(Borders::ALL)).scroll((self.offset as u16, 0));
+        Self {
             command
         }
     }
@@ -38,16 +26,6 @@ impl Pane {
 
         paragraph
     }
-
-    pub fn scroll_down(&mut self) {
-        self.offset += 1;
-    }
-    pub fn scroll_up(&mut self) {
-        if self.offset > 1 {
-            self.offset -= 1;
-        }
-    }
-
     
     pub fn send(&mut self, message: char) -> Result<(), String> {
         match self.command.send_char(message){
@@ -57,7 +35,7 @@ impl Pane {
     }
     
     /// Kills the underlying process
-    pub fn kill_process(&mut self) {
+    pub fn kill_process(&mut self){
         self.command.kill_process()
     }
 }
