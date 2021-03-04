@@ -36,18 +36,22 @@ impl Default for Shell {
 
         let config_path = format!("{}/.config/ephosh/ephosh.json", home_var);
 
+        let mut error: String = String::new();
+
         let config = match Path::new(&config_path).is_file() {
             true => {
                 let config = Config::new(config_path);
                 match config {
                     Ok(config) => config,
                     Err(err) => {
+                        error = String::from("Config: ") + &err.1[..];
                         err.0
                     }
                 }
             },
             false => Config::default()
         };
+
         let current_dir = env::current_dir().unwrap().to_str().unwrap().to_owned();
 
         let username = env::var("USER").unwrap().to_owned();
@@ -62,11 +66,12 @@ impl Default for Shell {
         } else {
             history.unwrap()
         };
+
         Self {
             username,
             current_dir,
             config,
-            error: "".to_owned(),
+            error,
             input: "".to_owned(),
             input_mode: InputMode::Command,
             panes: vec![],
