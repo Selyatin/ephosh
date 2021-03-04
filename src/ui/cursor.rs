@@ -1,6 +1,6 @@
 pub struct Cursor {
     x: u16,
-    y: u16
+    y: u16,
 }
 impl Cursor {
     pub fn new(x: u16, y: u16) -> Self {

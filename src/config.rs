@@ -9,22 +9,20 @@ pub struct Config {
 
 impl Config {
     pub fn new<S: AsRef<str>>(path: S) -> Result<Config, (Config, String)> {
-
-        let json_data_as_str = match std::fs::read_to_string(path.as_ref()){
+        let json_data_as_str = match std::fs::read_to_string(path.as_ref()) {
             Ok(data) => data,
-            Err(err) => return Err((Config::default(), err.to_string()))
+            Err(err) => return Err((Config::default(), err.to_string())),
         };
 
-        let mut config: Config = match serde_json::from_str(&json_data_as_str){
+        let mut config: Config = match serde_json::from_str(&json_data_as_str) {
             Ok(config) => config,
-            Err(err) => return Err((Config::default(), err.to_string()))
+            Err(err) => return Err((Config::default(), err.to_string())),
         };
 
-        
         if config.history_path.is_empty() {
             config.history_path = format!("{}/.ephosh_history", std::env::var("HOME").unwrap());
         }
-        
+
         Ok(config)
     }
 }

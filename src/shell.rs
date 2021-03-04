@@ -1,15 +1,11 @@
 use super::{
     config::Config,
-    ui::{
-        Pane,
-        Cursor,
-        input::InputMode
-    }
+    ui::{input::InputMode, Cursor, Pane},
 };
 use std::{
+    env,
     fs::{File, OpenOptions},
     path::Path,
-    env,
 };
 use tui::layout::Rect;
 
@@ -31,7 +27,7 @@ impl Default for Shell {
     fn default() -> Self {
         let home_var = match env::var("HOME") {
             Ok(var) => var,
-            Err(_) => panic!("Error: Couldn't get HOME var")
+            Err(_) => panic!("Error: Couldn't get HOME var"),
         };
 
         let config_path = format!("{}/.config/ephosh/ephosh.json", home_var);
@@ -48,8 +44,8 @@ impl Default for Shell {
                         err.0
                     }
                 }
-            },
-            false => Config::default()
+            }
+            false => Config::default(),
         };
 
         let current_dir = env::current_dir().unwrap().to_str().unwrap().to_owned();

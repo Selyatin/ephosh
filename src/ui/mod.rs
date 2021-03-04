@@ -1,6 +1,6 @@
-mod pane;
 mod cursor;
 pub mod input;
+mod pane;
 
-pub use pane::Pane;
 pub use cursor::Cursor;
+pub use pane::Pane;

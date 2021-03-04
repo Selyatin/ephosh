@@ -6,16 +6,16 @@ use std::sync::{
 };
 use std::thread;
 use std::time::Duration;
-use termion::event::Key;
+use termion::event::{Event, Key};
 use termion::input::TermRead;
 
 #[derive(PartialEq)]
 pub enum InputMode {
     Command,
-    Interact
+    Interact,
 }
 
-pub enum Event<I> {
+pub enum TerminalEvent<I> {
     Input(I),
     Tick,
 }
@@ -23,7 +23,7 @@ pub enum Event<I> {
 /// A small event handler that wrap termion input and tick events. Each event
 /// type is handled in its own thread and returned to a common `Receiver`
 pub struct Events {
-    rx: mpsc::Receiver<Event<Key>>,
+    rx: mpsc::Receiver<TerminalEvent<Event>>,
     //input_handle: thread::JoinHandle<()>,
     //tick_handle: thread::JoinHandle<()>,
 }
@@ -50,19 +50,28 @@ impl Events {
 
     pub fn with_config(config: Config) -> Events {
         let (tx, rx) = mpsc::channel();
+
         let ignore_exit_key = Arc::new(AtomicBool::new(false));
+
         let _input_handle = {
             let tx = tx.clone();
+
             let ignore_exit_key = ignore_exit_key.clone();
+
             thread::spawn(move || {
                 let stdin = io::stdin();
-                for evt in stdin.keys() {
-                    if let Ok(key) = evt {
-                        if let Err(err) = tx.send(Event::Input(key)) {
+
+                for evt in stdin.events() {
+                    if let Ok(event) = evt {
+                        if let Err(err) = tx.send(TerminalEvent::Input(event.clone())) {
                             eprintln!("{}", err);
+
                             return;
                         }
-                        if !ignore_exit_key.load(Ordering::Relaxed) && key == config.exit_key {
+
+                        if !ignore_exit_key.load(Ordering::Relaxed)
+                            && event == Event::Key(config.exit_key)
+                        {
                             return;
                         }
                     }
@@ -71,7 +80,7 @@ impl Events {
         };
         let _tick_handle = {
             thread::spawn(move || loop {
-                if tx.send(Event::Tick).is_err() {
+                if tx.send(TerminalEvent::Tick).is_err() {
                     break;
                 }
                 thread::sleep(config.tick_rate);
@@ -79,12 +88,12 @@ impl Events {
         };
         Events {
             rx,
-        //    input_handle,
-        //    tick_handle,
+            //    input_handle,
+            //    tick_handle,
         }
     }
 
-    pub fn next(&self) -> Result<Event<Key>, mpsc::RecvError> {
+    pub fn next(&self) -> Result<TerminalEvent<Event>, mpsc::RecvError> {
         self.rx.recv()
     }
 }
