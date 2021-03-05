@@ -118,6 +118,7 @@ fn main() -> Result<(), io::Error> {
                     InputMode::Command => "Mode: Command",
                     InputMode::Interact => "Mode: Interact",
                 };
+                shell.status_len = shell.username.len() + shell.current_dir.len() + input_mode.len() + " | ".len() * 2;
 
                 let input_mode_span = Span::styled(
                     input_mode,
@@ -374,9 +375,21 @@ fn main() -> Result<(), io::Error> {
                     }
                 }
                 Event::Mouse(evt) => match evt {
-                    MouseEvent::Press(_, _x, _y)
-                    | MouseEvent::Hold(_x, _y)
-                    | MouseEvent::Release(_x, _y) => {
+                    MouseEvent::Press(_, x, y)
+                    | MouseEvent::Hold(x, y)
+                    | MouseEvent::Release(x, y) => {
+                        let cx = shell.status_len as u16;
+                        let cy = shell.chunks[1].top() + 1;
+
+                        match (x, y).cmp(&(cx, cy)) {
+                            Ordering::Equal => {
+                                shell.input_mode = match shell.input_mode {
+                                    InputMode::Command => InputMode::Interact,
+                                    InputMode::Interact => InputMode::Command,
+                                }
+                            },
+                            _ => ()
+                        }
                     }
                 },
                 Event::Unsupported(_) => (),

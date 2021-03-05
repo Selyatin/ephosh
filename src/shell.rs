@@ -21,6 +21,7 @@ pub struct Shell {
     pub config: Config,
     pub chunks: Vec<Rect>,
     pub history: File,
+    pub status_len: usize,
 }
 
 impl Default for Shell {
@@ -75,6 +76,7 @@ impl Default for Shell {
             cursor: Cursor::new(1, 1),
             chunks: vec![],
             history,
+            status_len: 0
         }
     }
 }
