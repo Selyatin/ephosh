@@ -19,7 +19,6 @@ use tui::{
 
 mod config;
 mod inbuilt;
-mod non_blocking;
 mod shell;
 mod ui;
 mod utils;
@@ -272,15 +271,14 @@ fn main() -> Result<(), io::Error> {
                                     _ => {}
                                 }
 
-                                let mut command = non_blocking::Command::new(args[0]);
-
-                                command.args(&args[1..]);
-
-                                if let Err(err) = command.spawn() {
-                                    shell.error = err;
-                                    shell.input.clear();
-                                    continue;
-                                }
+                                let mut command = match shell::Command::new(&shell.pty, args, shell.terminal_size){
+                                    Ok(command) => command,
+                                    Err(err) => {
+                                        shell.error = err;
+                                        shell.input.clear();
+                                        continue;
+                                    }
+                                };
 
                                 let pane = Pane::new(command);
 

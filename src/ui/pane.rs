@@ -1,9 +1,8 @@
 use tui::text::Text;
 use tui::widgets::{Block, Borders, Paragraph};
 
-use crate::non_blocking::Command;
+use crate::shell::Command;
 
-#[derive(Debug)]
 pub struct Pane {
     command: Command,
 }
@@ -15,7 +14,7 @@ impl Pane {
 
     pub fn get_output_as_paragraph(&mut self) -> Paragraph {
         let text = match self.command.get_output() {
-            Ok(output) => ansi4tui::bytes_to_text(&output),
+            Ok(output) => ansi4tui::bytes_to_text(output),
             Err(err) => Text::from(err),
         };
 
@@ -33,6 +32,6 @@ impl Pane {
 
     /// Kills the underlying process
     pub fn kill_process(&mut self) {
-        self.command.kill_process()
+        self.command.kill();
     }
 }

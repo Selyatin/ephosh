@@ -1,4 +1,4 @@
-use super::{
+use crate::{
     config::Config,
     ui::{input::InputMode, Cursor, Pane},
 };
@@ -6,6 +6,11 @@ use std::{
     env,
     fs::{File, OpenOptions},
     path::Path,
+};
+use portable_pty::{
+    PtySystem,
+    native_pty_system,
+    PtySize
 };
 use tui::layout::Rect;
 
@@ -22,6 +27,8 @@ pub struct Shell {
     pub chunks: Vec<Rect>,
     pub history: File,
     pub status_len: usize,
+    pub terminal_size: (u16, u16),
+    pub pty: Box<dyn PtySystem>
 }
 
 impl Default for Shell {
@@ -63,6 +70,10 @@ impl Default for Shell {
         } else {
             history.unwrap()
         };
+    
+        let pty = native_pty_system();
+        
+        let terminal_size = termion::terminal_size().expect("Couldn't get terminal size");
 
         Self {
             username,
@@ -76,7 +87,9 @@ impl Default for Shell {
             cursor: Cursor::new(1, 1),
             chunks: vec![],
             history,
-            status_len: 0
+            status_len: 0,
+            terminal_size,
+            pty
         }
     }
 }
