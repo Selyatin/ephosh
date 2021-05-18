@@ -10,10 +10,8 @@ edition = "2018"
 lto = true
 
 [dependencies]
-tui = "0.14.0"
-termion = "1.5.6"
 is_executable = "1.0.1"
 serde_json = "1.0.59"
 serde = { features = ["derive"], version = "1.0.117" }
-ansi4tui = "0.2.0"
 portable-pty = "0.4.0"
+crossterm = "0.19.0"

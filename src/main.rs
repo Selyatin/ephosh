@@ -19,4 +19,5 @@ fn main(){
     
     std::thread::sleep(std::time::Duration::from_millis(100));
     stdout.write(&child.get_output().unwrap());
+    std::thread::sleep(std::time::Duration::from_secs(5));
 }

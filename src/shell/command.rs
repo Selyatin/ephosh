@@ -127,8 +127,8 @@ impl Command {
 
 pub fn resize(&mut self, terminal_size: (u16, u16)) -> Result<(), String>{
     if let Err(err) = self.pair.master.resize(PtySize{
-        rows: terminal_size.0,
-        cols: terminal_size.1,
+        cols: terminal_size.0,
+        rows: terminal_size.1,
         pixel_width: 0,
         pixel_height: 0
     }){

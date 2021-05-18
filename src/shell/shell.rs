@@ -69,7 +69,7 @@ impl Default for Shell {
     
         let pty = native_pty_system();
         
-        let terminal_size = termion::terminal_size().expect("Couldn't get terminal size");
+        let terminal_size = crossterm::terminal::size().expect("Couldn't get terminal size");
 
         Self {
             username,
