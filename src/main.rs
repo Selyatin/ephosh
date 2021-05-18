@@ -7,7 +7,6 @@ use std::{
 mod config;
 mod inbuilt;
 mod shell;
-mod ui;
 mod utils;
 
 use shell::Shell;
