@@ -34,8 +34,8 @@ impl Command {
         }
 
         let pair = match pty.openpty(PtySize {
-            rows: terminal_size.0,
-            cols: terminal_size.1,
+            rows: terminal_size.1,
+            cols: terminal_size.0,
             pixel_width: 0,
             pixel_height: 0
         }) {
@@ -86,7 +86,7 @@ impl Command {
             let bytes = bytes_clone;
 
             loop {
-                let mut buffer = [0 as u8; 1024];
+                let mut buffer = [0 as u8; 4086];
 
                 match reader.read(&mut buffer) {
                     Ok(size) => {
