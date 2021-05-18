@@ -1,6 +1,10 @@
 use std::{
     thread,
     time::Duration,
+    io::{
+        Read,
+        Write
+    },
     sync::{
         mpsc::{
             channel,
@@ -20,9 +24,12 @@ use portable_pty::{
     CommandBuilder
 };
 
+const BUFFER_SIZE: usize = 32162;
+
 pub struct Command {
-    bytes: Arc<Mutex<Vec<u8>>>,
+    bytes: [u8; BUFFER_SIZE],
     kill: Arc<AtomicBool>,
+    reader: Box<dyn Read + Send>,
     stdin_channel: Sender<char>,
     pair: PtyPair
 }
@@ -57,15 +64,13 @@ impl Command {
             Err(err) => return Err(err.to_string())
         };
 
-        let bytes: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![]));
-
-        let mut reader = match pair.master.try_clone_reader(){
-            Ok(reader) => reader,
-            Err(err) => return Err(err.to_string())
-        };
-
         let mut writer = match pair.master.try_clone_writer(){
             Ok(writer) => writer,
+            Err(err) => return Err(err.to_string())
+        };
+        
+        let reader = match pair.master.try_clone_reader(){
+            Ok(reader) => reader,
             Err(err) => return Err(err.to_string())
         };
 
@@ -77,33 +82,7 @@ impl Command {
                     if child.kill().is_err(){}
                     if child.wait().is_err(){}
                 }
-                thread::sleep(Duration::from_millis(25));
-            }
-        });
-
-        let bytes_clone = bytes.clone();
-        // Spawn a thread that will read the output and save it if there's new output
-        thread::spawn(move || {
-            let bytes = bytes_clone;
-
-            loop {
-                let mut buffer = [0 as u8; 4086];
-
-                match reader.read(&mut buffer) {
-                    Ok(size) => {
-                        if size < 1 {
-                            break;
-                        }
-                    },
-                    Err(_) => break
-                };
-
-                let mut lock = match bytes.lock(){
-                    Ok(lock) => lock,
-                    Err(_) => break
-                };
-                
-                lock.extend(&buffer);
+                thread::sleep(Duration::from_millis(100));
             }
         });
 
@@ -120,42 +99,42 @@ impl Command {
         Ok(Self {
             pair,
             kill,
+            reader,
             stdin_channel: sender,
-            bytes
+            bytes: [0 as u8; BUFFER_SIZE]
         })
-}
-
-pub fn resize(&mut self, terminal_size: (u16, u16)) -> Result<(), String>{
-    if let Err(err) = self.pair.master.resize(PtySize{
-        cols: terminal_size.0,
-        rows: terminal_size.1,
-        pixel_width: 0,
-        pixel_height: 0
-    }){
-        return Err(err.to_string());
     }
 
-    Ok(())
-}
+    pub fn resize(&mut self, terminal_size: (u16, u16)) -> Result<(), String>{
+        if let Err(err) = self.pair.master.resize(PtySize{
+            cols: terminal_size.0,
+            rows: terminal_size.1,
+            pixel_width: 0,
+            pixel_height: 0
+        }){
+            return Err(err.to_string());
+        }
 
-pub fn get_output<'a>(&self) -> Result<Vec<u8>, String> {
-    let lock = match self.bytes.lock(){
-        Ok(lock) => lock,
-        Err(err) => return Err(err.to_string())
-    };
-
-    Ok(lock.clone())
-}
-
-pub fn send_char(&self, c: char) -> Result<(), String> {
-    if let Err(err) = self.stdin_channel.send(c) {
-        return Err(err.to_string());
+        Ok(())
     }
 
-    Ok(())
-}
+    pub fn get_output<'a>(&mut self) -> Result<&[u8], String> {
+        if let Err(err) = self.reader.read(&mut self.bytes) {
+            return Err(err.to_string())
+        };
 
-pub fn kill(&mut self){
-    self.kill.store(true, Ordering::Relaxed);
-}
+        Ok(&self.bytes)
+    }
+
+    pub fn send_char(&self, c: char) -> Result<(), String> {
+        if let Err(err) = self.stdin_channel.send(c) {
+            return Err(err.to_string());
+        }
+
+        Ok(())
+    }
+
+    pub fn kill(&mut self){
+        self.kill.store(true, Ordering::Relaxed);
+    }
 }

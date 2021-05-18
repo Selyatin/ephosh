@@ -3,6 +3,7 @@ use std::{
     env,
     io::{self, Write},
 };
+use crossterm::terminal;
 
 mod config;
 mod inbuilt;
@@ -15,9 +16,10 @@ fn main(){
     let mut shell = Shell::default();
     let mut stdout = io::stdout();
     
-    let child = shell::Command::new(&shell.pty, vec!["vim"], shell.terminal_size).unwrap();
-    
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    stdout.write(&child.get_output().unwrap());
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    let mut child = shell::Command::new(&shell.pty, vec!["vim"], shell.terminal_size).unwrap();
+
+    loop {
+        stdout.write(child.get_output().unwrap());
+        stdout.flush().unwrap();
+    }
 }
