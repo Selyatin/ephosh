@@ -21,7 +21,8 @@ pub struct Shell {
     pub input: String,
     pub input_mode: InputMode,
     pub config: Config,
-    pub history: File,
+    //pub history: File,
+    pub should_exit: bool,
     pub status_len: usize,
     pub terminal_size: (u16, u16),
     pub pty: Box<dyn PtySystem>
@@ -56,16 +57,17 @@ impl Default for Shell {
 
         let username = env::var("USER").unwrap().to_owned();
 
-        let history = OpenOptions::new()
+        /*let history = OpenOptions::new()
             .write(true)
             .read(true)
-            .open(&config.history_path);
+            .create(true)
+            .open(&config.history_path).unwrap();*/
 
-        let history = if let Err(_) = history {
-            File::create(&config.history_path).unwrap()
-        } else {
-            history.unwrap()
-        };
+        //let history = if let Err(_) = history {
+        //let history = File::create(&config.history_path).unwrap();
+        //} else {
+          //  history.unwrap()
+        //};
     
         let pty = native_pty_system();
         
@@ -79,7 +81,8 @@ impl Default for Shell {
             input: "".to_owned(),
             input_mode: InputMode::Command,
             active_pane: 0,
-            history,
+            should_exit: false,
+            //history,
             status_len: 0,
             terminal_size,
             pty
