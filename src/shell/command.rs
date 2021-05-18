@@ -28,7 +28,8 @@ pub struct Command {
 }
 
 impl Command {
-    pub fn new(pty: &Box<dyn PtySystem>, args: Vec<&str>, terminal_size: (u16, u16)) -> Result<Self, String> {
+    pub fn new<'a>(pty: &Box<dyn PtySystem>, args: impl IntoIterator<Item = &'a str>, terminal_size: (u16, u16)) -> Result<Self, String> {
+        let args: Vec<&str> = args.into_iter().collect();
         if args.len() < 1 {
             return Err("Not enough arguments".to_owned());
         }

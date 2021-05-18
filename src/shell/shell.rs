@@ -1,7 +1,7 @@
 use crate::{
     config::Config,
-    ui::{input::InputMode, Cursor, Pane},
 };
+use super::InputMode;
 use std::{
     env,
     fs::{File, OpenOptions},
@@ -12,19 +12,15 @@ use portable_pty::{
     native_pty_system,
     PtySize
 };
-use tui::layout::Rect;
 
 pub struct Shell {
     pub username: String,
     pub current_dir: String,
-    pub panes: Vec<Pane>,
     pub active_pane: usize,
     pub error: String,
     pub input: String,
     pub input_mode: InputMode,
-    pub cursor: Cursor,
     pub config: Config,
-    pub chunks: Vec<Rect>,
     pub history: File,
     pub status_len: usize,
     pub terminal_size: (u16, u16),
@@ -82,10 +78,7 @@ impl Default for Shell {
             error,
             input: "".to_owned(),
             input_mode: InputMode::Command,
-            panes: vec![],
             active_pane: 0,
-            cursor: Cursor::new(1, 1),
-            chunks: vec![],
             history,
             status_len: 0,
             terminal_size,
