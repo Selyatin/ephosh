@@ -3,7 +3,7 @@ use std::{
     env,
     io::{self, Write},
 };
-use crossterm::terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::{event::KeyCode, terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}};
 use crossterm::execute;
 use ephosh::event::*;
 
@@ -40,21 +40,16 @@ fn main(){
             stdout.flush().unwrap();
         }
 
-
         if let Event::Input(ev) = events.next().unwrap() {
-            match ev {
-                Key::Char(c) => {
+            match ev.code {
+                KeyCode::Char(c) => {
                     match c {
-                        'q' => shell.should_exit = true,
+                        'q' => break,
                         _ => ()
                     }
                 }
                 _ => ()
             }
-        }
-
-        if shell.should_exit {
-            break;
         }
     }
 

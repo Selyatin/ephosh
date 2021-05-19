@@ -1,7 +1,4 @@
-pub mod key;
-pub use key::Key;
-
-use crossterm::event;
+use crossterm::event::{self, KeyEvent};
 use std::{sync::mpsc, thread, time::Duration};
 
 pub enum Event<I> {
@@ -10,8 +7,8 @@ pub enum Event<I> {
 }
 
 pub struct Events {
-    rx: mpsc::Receiver<Event<Key>>,
-    _tx: mpsc::Sender<Event<Key>>,
+    rx: mpsc::Receiver<Event<KeyEvent>>,
+    _tx: mpsc::Sender<Event<KeyEvent>>,
 }
 
 impl Events {
@@ -25,8 +22,6 @@ impl Events {
             loop {
                 if event::poll(tick_rate).unwrap() {
                     if let event::Event::Key(key) = event::read().unwrap() {
-                        let key = Key::from(key);
-
                         event_tx.send(Event::Input(key)).unwrap();
                     }
                 }
@@ -37,7 +32,7 @@ impl Events {
         Events { rx, _tx: tx }
     }
 
-    pub fn next(&self) -> Result<Event<Key>, mpsc::RecvError> {
+    pub fn next(&self) -> Result<Event<KeyEvent>, mpsc::RecvError> {
         self.rx.recv()
     }
 }
