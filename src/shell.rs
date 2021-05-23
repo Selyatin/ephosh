@@ -3,8 +3,9 @@ use std::{
     time::Duration
 };
 use crossterm::{
-    event::{KeyCode, Event, poll, read},
-    terminal::{self, enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}
+    event::{KeyCode, KeyEvent, KeyModifiers, Event, poll, read},
+    ExecutableCommand,
+    terminal::{self, enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType}
 };
 use portable_pty::{
     PtySystem,
@@ -53,6 +54,7 @@ impl Shell {
         for col in 0..cols {
             self.stdout.write(&['\n' as u8])?;
         }
+
         Ok(())
     }
 
@@ -77,8 +79,41 @@ impl Shell {
         Ok(())
     }
 
+    fn get_input(&mut self){
+        if let Ok(true) = poll(Duration::from_millis(2)) {
+            match read().expect("Couldn't read input"){
+                Event::Key(KeyEvent{code: KeyCode::Char(c), modifiers: KeyModifiers::NONE}) => {
+                    self.input.push(c);
+                },
+                Event::Key(KeyEvent{code: KeyCode::Enter, modifiers}) => {
+                                            let split: Vec<&str> = self.input.split(" ").collect();
+                            let command = match Command::new(&self.pty, split, self.terminal_size){
+                                Ok(command) => command,
+                                Err(err) => {
+                                    self.error = err;
+                                    return;
+                                }
+                            };
+
+                            self.commands.push(command);
+                            self.input.clear();
+                },
+                Event::Key(KeyEvent{code: KeyCode::Backspace, modifiers}) => {
+                    self.input.pop();
+                },
+                Event::Key(KeyEvent{code: KeyCode::Char(c), modifiers: KeyModifiers::CONTROL}) => {
+                    if c == 'q' {
+                        panic!("Break mothafukaaa");
+                    }
+                },
+                _ => {}
+            };
+        }
+    }
+
     pub fn run(&mut self) -> Result<(), io::Error>{
         loop {
+            self.stdout.execute(Clear(ClearType::All)).expect("Couldn't clear terminal");;
             for command in &mut self.commands {
                 let output = match command.get_output() {
                     Ok(output) => output,
@@ -97,41 +132,7 @@ impl Shell {
 
             self.stdout.flush()?;
 
-            if let Ok(true) = poll(Duration::from_millis(2)) {
-                match read().expect("Couldn't read input"){
-                    Event::Key(event) => {
-                        match event.code {
-                            KeyCode::Char(c) => {
-                                self.input.push(c);
-
-                                match c {
-                                    'q' => panic!("End"),
-                                    _ => {}
-                                };
-                            },
-                            KeyCode::Enter => {
-                                let split: Vec<&str> = self.input.split(" ").collect();
-                                let command = match Command::new(&self.pty, split, self.terminal_size){
-                                    Ok(command) => command,
-                                    Err(err) => {
-                                        self.error = err;
-                                        continue;
-                                    }
-                                };
-
-                                self.commands.push(command);
-                                self.input.clear();
-                            },
-                            KeyCode::Backspace => {
-                                self.input.pop();
-                            },
-                            _ => {}
-                        }
-                    },
-
-                    _ => {}
-                };
-            }
+            self.get_input();
         }
     }
 }
