@@ -119,8 +119,13 @@ impl Command {
     }
 
     pub fn get_output<'a>(&mut self) -> Result<&[u8], String> {
-        if let Err(err) = self.reader.read(&mut self.bytes) {
-            return Err(err.to_string())
+        match self.reader.read(&mut self.bytes) {
+            Ok(size) => {
+                if size < 1 {
+                    self.kill();
+                }
+            },
+            Err(err) => return Err(err.to_string())
         };
 
         Ok(&self.bytes)
